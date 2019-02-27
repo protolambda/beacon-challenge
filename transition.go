@@ -1,6 +1,9 @@
 package beacon_challenge
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // interface required by Justin Drake for challenge.
 func StateTransition(preState *BeaconState, block *BeaconBlock) (res *BeaconState, err error) {
@@ -64,10 +67,52 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 	// START ------------------------------
 
 	// Proposer slashings
-	// TODO
+	if len(block.body.proposer_slashings) > MAX_PROPOSER_SLASHINGS {
+		return errors.New("too many proposer slashings")
+	}
+	for i, proposer_slashing := range block.body.proposer_slashings {
+		proposer := state.validator_registry[proposer_slashing.proposer_index]
+		if !(proposer_slashing.proposal_1.slot == proposer_slashing.proposal_2.slot &&
+			proposer_slashing.proposal_1.shard == proposer_slashing.proposal_2.shard &&
+			proposer_slashing.proposal_1.block_root != proposer_slashing.proposal_2.block_root &&
+			proposer.slashed == false &&
+			bls_verify(proposer.pubkey, signed_root(proposer_slashing.proposal_1, "signature"), proposer_slashing.proposal_1.signature, get_domain(state.fork, proposer_slashing.proposal_1.slot.ToEpoch(), DOMAIN_PROPOSAL)) &&
+			bls_verify(proposer.pubkey, signed_root(proposer_slashing.proposal_2, "signature"), proposer_slashing.proposal_2.signature, get_domain(state.fork, proposer_slashing.proposal_2.slot.ToEpoch(), DOMAIN_PROPOSAL))) {
+			return errors.New(fmt.Sprintf("proposer slashing %d is invalid", i))
+		}
+		slash_validator(state, proposer_slashing.proposer_index)
+	}
 
 	// Attester slashings
-	// TODO
+	for i, attester_slashing := range block.body.attester_slashings {
+		slashable_attestation_1 := &attester_slashing.slashable_attestation_1
+		slashable_attestation_2 := &attester_slashing.slashable_attestation_2
+		// verify the attester_slashing
+		if !(slashable_attestation_1.data != slashable_attestation_2.data &&
+			(is_double_vote(&slashable_attestation_1.data, &slashable_attestation_2.data) ||
+				is_surround_vote(&slashable_attestation_1.data, &slashable_attestation_2.data)) &&
+			verify_slashable_attestation(state, slashable_attestation_1) &&
+			verify_slashable_attestation(state, slashable_attestation_2)) {
+			return errors.New(fmt.Sprintf("attester slashing %d is invalid", i))
+		}
+		// keep track of effectiveness
+		slashedAny := false
+		// run slashings where applicable
+		ValLoop: for _, v1 := range slashable_attestation_1.validator_indices {
+			for _, v2 := range slashable_attestation_1.validator_indices {
+				if v1 == v2 && !state.validator_registry[v1].slashed {
+					slash_validator(state, v1)
+					slashedAny = true
+					// continue to look for next validator in outer loop (because there are no duplicates in attestation)
+					continue ValLoop
+				}
+			}
+		}
+		// "Verify that len(slashable_indices) >= 1."
+		if !slashedAny {
+			return errors.New(fmt.Sprintf("attester slashing %d is not effective, hence invalid", i))
+		}
+	}
 
 	// Attestations
 	// TODO
@@ -133,6 +178,26 @@ func EpochTransition(state *BeaconState) {
 
 	// > final updates
 
+}
+
+func verify_slashable_attestation(state *BeaconState, attestation *SlashableAttestation) bool {
+	// TODO
+	return false
+}
+
+func is_double_vote(a *AttestationData, b *AttestationData) bool {
+	// TODO
+	return false
+}
+
+
+func is_surround_vote(a *AttestationData, b *AttestationData) bool {
+	// TODO
+	return false
+}
+
+func slash_validator(state *BeaconState, index ValidatorIndex) {
+	// TODO
 }
 
 func get_randao_mix(state *BeaconState, epoch Epoch) Bytes32 {

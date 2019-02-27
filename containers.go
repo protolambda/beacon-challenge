@@ -218,7 +218,7 @@ func (st *BeaconState) Copy() *BeaconState {
 
 // Get current epoch
 func (st *BeaconState) Epoch() Epoch {
-	return Epoch(st.slot / SLOTS_PER_EPOCH)
+	return st.slot.ToEpoch()
 }
 
 // Return previous epoch. Not just current - 1: it's clipped to genesis.

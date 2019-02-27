@@ -18,3 +18,7 @@ type DepositIndex uint64
 
 type Timestamp uint64
 type Seconds uint64
+
+func (s Slot) ToEpoch() Epoch {
+	return Epoch(s / SLOTS_PER_EPOCH)
+}
