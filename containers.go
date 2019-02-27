@@ -111,7 +111,7 @@ type Deposit struct {
 	// Branch in the deposit tree
 	branch []Root
 	// Index in the deposit tree
-	index uint64
+	index DepositIndex
 	// Data
 	deposit_data DepositData
 }

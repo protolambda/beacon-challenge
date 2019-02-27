@@ -14,6 +14,11 @@ func bls_verify(pubkey BLSPubkey, message_hash Root, signature BLSSignature, dom
 	return false
 }
 
+func ssz_encode(input interface{}) []byte {
+	// TODO
+	return []byte{}
+}
+
 func hash_tree_root(input interface{}) Root {
 	return ZERO_HASH
 }
@@ -38,4 +43,22 @@ func bls_aggregate_pubkeys(pubkeys []BLSPubkey) BLSPubkey {
 func bls_verify_multiple(pubkeys []BLSPubkey, message_hashes []Root, signature BLSSignature, domain BlsDomain) bool {
 	// TODO BLS
 	return false
+}
+
+// Verify that the given leaf is on the merkle branch.
+func verify_merkle_branch(leaf Bytes32, branch []Root, depth uint64, index uint64, root Root) bool {
+	value := leaf
+	buf := make([]byte, 64, 64)
+	for i := uint64(0); i < depth; i++ {
+		if (index >> i) & 1 == 1 {
+			copy(buf[:32], branch[i][:])
+			copy(buf[32:], value[:])
+		} else {
+			// reverse order in buffer, compared to above
+			copy(buf[32:], branch[i][:])
+			copy(buf[:32], value[:])
+		}
+		value = hash(buf)
+	}
+	return Root(value) == root
 }

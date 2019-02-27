@@ -1,6 +1,7 @@
 package beacon_challenge
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 )
@@ -212,7 +213,33 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 	}
 
 	// Deposits
-	// TODO
+	if len(block.body.deposits) > MAX_DEPOSITS {
+		return errors.New("too many deposits")
+	}
+	for i, dep := range block.body.deposits {
+		if dep.index != state.deposit_index {
+			return errors.New(fmt.Sprintf("deposit %d has index %d that does not match with state index %d", i, dep.index, state.deposit_index))
+		}
+		// Let serialized_deposit_data be the serialized form of deposit.deposit_data.
+		// It should be 8 bytes for deposit_data.amount
+		//  followed by 8 bytes for deposit_data.timestamp
+		//  and then the DepositInput bytes.
+		// That is, it should match deposit_data in the Ethereum 1.0 deposit contract
+		//  of which the hash was placed into the Merkle tree.
+		dep_input_bytes := ssz_encode(dep.deposit_data.deposit_input)
+		serialized_deposit_data := make([]byte, 8 + 8 + len(dep_input_bytes), 8 + 8 + len(dep_input_bytes))
+		binary.LittleEndian.PutUint64(serialized_deposit_data[0:8], uint64(dep.deposit_data.amount))
+		binary.LittleEndian.PutUint64(serialized_deposit_data[8:16], uint64(dep.deposit_data.timestamp))
+		copy(serialized_deposit_data[16:], dep_input_bytes)
+
+		// verify the deposit
+		if !verify_merkle_branch(hash(serialized_deposit_data), dep.branch, DEPOSIT_CONTRACT_TREE_DEPTH,
+			uint64(dep.index), state.latest_eth1_data.deposit_root) {
+			return errors.New(fmt.Sprintf("deposit %d has merkle proof that failed to be verified", i))
+		}
+		process_deposit(state, &dep)
+		state.deposit_index += 1
+	}
 
 	// Voluntary exits
 	// TODO
@@ -274,9 +301,8 @@ func EpochTransition(state *BeaconState) {
 
 }
 
-type CrosslinkCommittee struct {
-	Committee []ValidatorIndex
-	Shard Shard
+func process_deposit(state *BeaconState, dep *Deposit) {
+	// TODO
 }
 
 func get_attestation_participants(state *BeaconState, data *AttestationData, bitfield *Bitfield) []ValidatorIndex {
@@ -284,6 +310,11 @@ func get_attestation_participants(state *BeaconState, data *AttestationData, bit
 	res := make([]ValidatorIndex, 0)
 	// Phase 0: bitfields will be 0, so output list will be empty.
 	return res
+}
+
+type CrosslinkCommittee struct {
+	Committee []ValidatorIndex
+	Shard Shard
 }
 
 // Return the list of (committee, shard) tuples for the slot.
