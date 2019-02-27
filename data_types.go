@@ -11,6 +11,7 @@ type Root [32]byte
 type Bytes32 [32]byte
 type BLSPubkey [48]byte
 type BLSSignature [96]byte
+type BlsDomain uint64
 type Bitfield big.Int
 
 type DepositIndex uint64

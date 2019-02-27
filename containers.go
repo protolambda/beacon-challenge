@@ -193,6 +193,44 @@ type BeaconState struct {
 	deposit_index DepositIndex
 }
 
+// Make a deep copy of the state object
+func (st *BeaconState) Copy() *BeaconState {
+	// copy over state
+	stUn := *st
+	res := &stUn
+	// manually copy over slices
+	// validators
+	copy(res.validator_registry, st.validator_registry)
+	copy(res.validator_balances, st.validator_balances)
+	// randao
+	copy(res.latest_randao_mixes, st.latest_randao_mixes)
+	// recent state
+	copy(res.latest_crosslinks, st.latest_crosslinks)
+	copy(res.latest_block_roots, st.latest_block_roots)
+	copy(res.latest_active_index_roots, st.latest_active_index_roots)
+	copy(res.latest_slashed_balances, st.latest_slashed_balances)
+	copy(res.latest_attestations, st.latest_attestations)
+	copy(res.batched_block_roots, st.batched_block_roots)
+	// eth1
+	copy(res.eth1_data_votes, st.eth1_data_votes)
+	return res
+}
+
+// Get current epoch
+func (st *BeaconState) Epoch() Epoch {
+	return Epoch(st.slot / SLOTS_PER_EPOCH)
+}
+
+// Return previous epoch. Not just current - 1: it's clipped to genesis.
+func (st *BeaconState) PreviousEpoch() Epoch {
+	epoch := st.Epoch()
+	if epoch < GENESIS_EPOCH {
+		return GENESIS_EPOCH
+	} else {
+		return epoch
+	}
+}
+
 type Validator struct {
 	// BLS public key
 	pubkey BLSPubkey

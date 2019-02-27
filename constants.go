@@ -61,9 +61,9 @@ const MAX_VOLUNTARY_EXITS = 1 << 4 // =  16
 const MAX_TRANSFERS = 1 << 4 // =  16
 
 // Signature domains
-const DOMAIN_DEPOSIT = 0
-const DOMAIN_ATTESTATION = 1
-const DOMAIN_PROPOSAL = 2
-const DOMAIN_EXIT = 3
-const DOMAIN_RANDAO = 4
-const DOMAIN_TRANSFER = 5
+const DOMAIN_DEPOSIT BlsDomain = 0
+const DOMAIN_ATTESTATION BlsDomain = 1
+const DOMAIN_PROPOSAL BlsDomain = 2
+const DOMAIN_EXIT BlsDomain = 3
+const DOMAIN_RANDAO BlsDomain = 4
+const DOMAIN_TRANSFER BlsDomain = 5
