@@ -242,10 +242,53 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 	}
 
 	// Voluntary exits
-	// TODO
+	if len(block.body.voluntary_exits) > MAX_VOLUNTARY_EXITS {
+		return errors.New("too many voluntary exits")
+	}
+	for i, exit := range block.body.voluntary_exits {
+		validator := state.validator_registry[exit.validator_index]
+		if !(validator.exit_epoch > get_delayed_activation_exit_epoch(state.Epoch()) &&
+			state.Epoch() > exit.epoch &&
+			bls_verify(validator.pubkey, signed_root(exit, "signature"),
+				exit.signature, get_domain(state.fork, exit.epoch, DOMAIN_EXIT))) {
+			return errors.New(fmt.Sprintf("voluntary exit %d could not be verified", i))
+		}
+		initiate_validator_exit(state, exit.validator_index)
+	}
 
 	// Transfers
-	// TODO
+	if len(block.body.transfers) > MAX_TRANSFERS {
+		return errors.New("too many transfers")
+	}
+	// check if all TXs are distinct
+	distinctionCheckSet := make(map[BLSSignature]uint64)
+	for i, v := range block.body.transfers {
+		if existing, ok := distinctionCheckSet[v.signature]; ok {
+			return errors.New(fmt.Sprintf("transfer %d is the same as transfer %d, aborting", i, existing))
+		}
+		distinctionCheckSet[v.signature] = uint64(i)
+	}
+
+	for i, transfer := range block.body.transfers {
+		withdrawCred := Bytes32{}
+		withdrawCred[31] = BLS_WITHDRAWAL_PREFIX_BYTE
+		copy(withdrawCred[1:], hash(transfer.pubkey)[1:])
+		// verify transfer data + signature. No separate error messages for line limit challenge...
+		if !(
+			state.validator_balances[transfer.from] >= transfer.amount &&
+			state.validator_balances[transfer.from] >= transfer.fee &&
+			((state.validator_balances[transfer.from] == transfer.amount + transfer.fee) ||
+				(state.validator_balances[transfer.from] >= transfer.amount + transfer.fee + MIN_DEPOSIT_AMOUNT)) &&
+			state.slot == transfer.slot &&
+			(state.Epoch() >= state.validator_registry[transfer.from].withdrawable_epoch || state.validator_registry[transfer.from].activation_epoch == FAR_FUTURE_EPOCH) &&
+			state.validator_registry[transfer.from].withdrawal_credentials == withdrawCred &&
+			bls_verify(transfer.pubkey, signed_root(transfer, "signature"), transfer.signature, get_domain(state.fork, transfer.slot.ToEpoch(), DOMAIN_TRANSFER))) {
+			return errors.New(fmt.Sprintf("transfer %d is invalid", i))
+		}
+		state.validator_balances[transfer.from] -= transfer.amount + transfer.fee
+		state.validator_balances[transfer.to] += transfer.amount
+		state.validator_balances[get_beacon_proposer_index(state, state.slot)] += transfer.fee
+	}
 
 	// END ------------------------------
 
@@ -299,6 +342,14 @@ func EpochTransition(state *BeaconState) {
 
 	// > final updates
 
+}
+
+func initiate_validator_exit(state *BeaconState, index ValidatorIndex) {
+	// TODO
+}
+
+func get_delayed_activation_exit_epoch(epoch Epoch) Epoch {
+	return epoch + 1 + ACTIVATION_EXIT_DELAY
 }
 
 func process_deposit(state *BeaconState, dep *Deposit) {
