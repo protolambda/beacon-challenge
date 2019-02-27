@@ -84,6 +84,9 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 	}
 
 	// Attester slashings
+	if len(block.body.attester_slashings) > MAX_ATTESTER_SLASHINGS {
+		return errors.New("too many attester slashings")
+	}
 	for i, attester_slashing := range block.body.attester_slashings {
 		slashable_attestation_1 := &attester_slashing.slashable_attestation_1
 		slashable_attestation_2 := &attester_slashing.slashable_attestation_2
@@ -115,7 +118,98 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 	}
 
 	// Attestations
-	// TODO
+	if len(block.body.attestations) > MAX_ATTESTATIONS {
+		return errors.New("too many attestations")
+	}
+	for i, attestation := range block.body.attestations {
+
+		justified_epoch := state.previous_justified_epoch
+		if (attestation.data.slot + 1).ToEpoch() >= state.Epoch() {
+			justified_epoch = state.justified_epoch
+		}
+		blockRoot, blockRootErr := get_block_root(state, attestation.data.justified_epoch.GetStartSlot())
+		if !(attestation.data.slot >= GENESIS_SLOT &&
+			attestation.data.slot + MIN_ATTESTATION_INCLUSION_DELAY <= state.slot &&
+			state.slot < attestation.data.slot + SLOTS_PER_EPOCH &&
+			attestation.data.justified_epoch == justified_epoch &&
+			(blockRootErr == nil && attestation.data.justified_block_root == blockRoot) &&
+			(state.latest_crosslinks[attestation.data.shard] == attestation.data.latest_crosslink ||
+				state.latest_crosslinks[attestation.data.shard] == Crosslink{crosslink_data_root: attestation.data.crosslink_data_root, epoch: attestation.data.slot.ToEpoch()})) {
+			return errors.New(fmt.Sprintf("attestation %d is not valid", i))
+		}
+		// Verify bitfields and aggregate signature
+
+		// phase 0 only:
+		if !(attestation.custody_bitfield.IsZero() && attestation.aggregation_bitfield.IsZero()) {
+			return errors.New(fmt.Sprintf("attestation %d has non-zero bitfields, illegal in phase 0", i))
+		}
+
+		crosslink_committees := get_crosslink_committees_at_slot(state, attestation.data.slot, false)
+		crosslink_committee := CrosslinkCommittee{}
+		for _, committee := range crosslink_committees {
+			if committee.Shard == attestation.data.shard {
+				crosslink_committee = committee
+				break
+			}
+		}
+		// TODO spec is weak here: it's not very explicit about length of bitfields.
+		//  Let's just make sure they are the size of the committee
+		if attestation.aggregation_bitfield.Length == uint64(len(crosslink_committee.Committee)) ||
+			attestation.custody_bitfield.Length == uint64(len(crosslink_committee.Committee)) {
+			return errors.New(fmt.Sprintf("attestation %d has bitfield(s) with incorrect size", i))
+		}
+		// phase 0 only
+		if !attestation.aggregation_bitfield.IsZero() || !attestation.custody_bitfield.IsZero() {
+			return errors.New(fmt.Sprintf("attestation %d has non-zero bitfield(s)", i))
+		}
+
+		participants := get_attestation_participants(state, &attestation.data, &attestation.aggregation_bitfield)
+		custody_bit_1_participants := get_attestation_participants(state, &attestation.data, &attestation.custody_bitfield)
+		custody_bit_0_participants := make([]ValidatorIndex, 0, len(crosslink_committee.Committee) - len(custody_bit_1_participants))
+		// Get the opposite of the custody_bit_1_participants: the remaining validators in the committee
+		for _, i := range crosslink_committee.Committee {
+			found := false
+			for _, j := range custody_bit_1_participants {
+				if i == j {
+					found = true
+					break
+				}
+			}
+			if !found {
+				custody_bit_0_participants = append(custody_bit_0_participants, i)
+			}
+		}
+
+		// get lists of pubkeys for both 0 and 1 custody-bits
+		custody_bit_0_pubkeys := make([]BLSPubkey, len(custody_bit_0_participants))
+		for i, v := range custody_bit_0_participants {
+			custody_bit_0_pubkeys[i] = state.validator_registry[v].pubkey
+		}
+		custody_bit_1_pubkeys := make([]BLSPubkey, len(custody_bit_1_participants))
+		for i, v := range custody_bit_1_participants {
+			custody_bit_1_pubkeys[i] = state.validator_registry[v].pubkey
+		}
+		// aggregate each of the two lists
+		pubKeys := []BLSPubkey{
+			bls_aggregate_pubkeys(custody_bit_0_pubkeys),
+			bls_aggregate_pubkeys(custody_bit_1_pubkeys),
+		}
+		// hash the attestation data with 0 and 1 as bit
+		hashes := []Root{
+			hash_tree_root(AttestationDataAndCustodyBit{attestation.data, false}),
+			hash_tree_root(AttestationDataAndCustodyBit{attestation.data, true}),
+		}
+		// now verify the two
+		if !bls_verify_multiple(pubKeys, hashes, attestation.aggregate_signature,
+			get_domain(state.fork, attestation.data.slot.ToEpoch(), DOMAIN_ATTESTATION)) {
+			return errors.New(fmt.Sprintf("attestation %d has invalid aggregated BLS signature", i))
+		}
+
+		// phase 0 only:
+		if attestation.data.crosslink_data_root != ZERO_HASH {
+			return errors.New(fmt.Sprintf("attestation %d has invalid crosslink: root must be 0 in phase 0", i))
+		}
+	}
 
 	// Deposits
 	// TODO
@@ -178,6 +272,84 @@ func EpochTransition(state *BeaconState) {
 
 	// > final updates
 
+}
+
+type CrosslinkCommittee struct {
+	Committee []ValidatorIndex
+	Shard Shard
+}
+
+func get_attestation_participants(state *BeaconState, data *AttestationData, bitfield *Bitfield) []ValidatorIndex {
+	// TODO implement spec function, instead of shortcut
+	res := make([]ValidatorIndex, 0)
+	// Phase 0: bitfields will be 0, so output list will be empty.
+	return res
+}
+
+// Return the list of (committee, shard) tuples for the slot.
+//
+// Note: There are two possible shufflings for crosslink committees for a
+//  slot in the next epoch -- with and without a registryChange
+func get_crosslink_committees_at_slot(state *BeaconState, slot Slot, registryChange bool) []CrosslinkCommittee {
+	/* TODO port to Go
+    epoch = slot_to_epoch(slot)
+    current_epoch = get_current_epoch(state)
+    previous_epoch = get_previous_epoch(state)
+    next_epoch = current_epoch + 1
+
+    assert previous_epoch <= epoch <= next_epoch
+
+    if epoch == current_epoch:
+        committees_per_epoch = get_current_epoch_committee_count(state)
+        seed = state.current_shuffling_seed
+        shuffling_epoch = state.current_shuffling_epoch
+        shuffling_start_shard = state.current_shuffling_start_shard
+    elif epoch == previous_epoch:
+        committees_per_epoch = get_previous_epoch_committee_count(state)
+        seed = state.previous_shuffling_seed
+        shuffling_epoch = state.previous_shuffling_epoch
+        shuffling_start_shard = state.previous_shuffling_start_shard
+    elif epoch == next_epoch:
+        current_committees_per_epoch = get_current_epoch_committee_count(state)
+        committees_per_epoch = get_next_epoch_committee_count(state)
+        shuffling_epoch = next_epoch
+
+        epochs_since_last_registry_update = current_epoch - state.validator_registry_update_epoch
+        if registry_change:
+            seed = generate_seed(state, next_epoch)
+            shuffling_start_shard = (state.current_shuffling_start_shard + current_committees_per_epoch) % SHARD_COUNT
+        elif epochs_since_last_registry_update > 1 and is_power_of_two(epochs_since_last_registry_update):
+            seed = generate_seed(state, next_epoch)
+            shuffling_start_shard = state.current_shuffling_start_shard
+        else:
+            seed = state.current_shuffling_seed
+            shuffling_start_shard = state.current_shuffling_start_shard
+
+    shuffling = get_shuffling(
+        seed,
+        state.validator_registry,
+        shuffling_epoch,
+    )
+    offset = slot % SLOTS_PER_EPOCH
+    committees_per_slot = committees_per_epoch // SLOTS_PER_EPOCH
+    slot_start_shard = (shuffling_start_shard + committees_per_slot * offset) % SHARD_COUNT
+
+    return [
+        (
+            shuffling[committees_per_slot * offset + i],
+            (slot_start_shard + i) % SHARD_COUNT,
+        )
+        for i in range(committees_per_slot)
+    ]
+	 */
+}
+
+// Return the block root at a recent slot.
+func get_block_root(state *BeaconState, slot Slot) (Root, error) {
+	if !(state.slot <= slot + LATEST_BLOCK_ROOTS_LENGTH && slot < state.slot) {
+		return ZERO_HASH, errors.New("slot is not a recent slot, cannot find block root")
+	}
+	return state.latest_block_roots[slot % LATEST_BLOCK_ROOTS_LENGTH], nil
 }
 
 func verify_slashable_attestation(state *BeaconState, attestation *SlashableAttestation) bool {

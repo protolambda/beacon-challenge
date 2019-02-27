@@ -93,6 +93,13 @@ type AttestationData struct {
 	justified_block_root Root
 }
 
+type AttestationDataAndCustodyBit struct {
+	// Attestation data
+	data AttestationData
+	// Custody bit
+	custody_bit bool
+}
+
 type Crosslink struct {
 	// Epoch number
 	epoch Epoch

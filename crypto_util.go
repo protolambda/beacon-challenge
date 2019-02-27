@@ -29,3 +29,13 @@ func xorBytes32(a Bytes32, b Bytes32) Bytes32 {
 	}
 	return out
 }
+
+func bls_aggregate_pubkeys(pubkeys []BLSPubkey) BLSPubkey {
+	// TODO aggregate pubkeys with BLS
+	return BLSPubkey{}
+}
+
+func bls_verify_multiple(pubkeys []BLSPubkey, message_hashes []Root, signature BLSSignature, domain BlsDomain) bool {
+	// TODO BLS
+	return false
+}
