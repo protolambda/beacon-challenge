@@ -21,10 +21,10 @@ func StateTransition(preState *BeaconState, block *BeaconBlock) (res *BeaconStat
 	// "happens at the end of the last slot of every epoch "
 	if (state.slot + 1) % SLOTS_PER_EPOCH == 0 {
 		EpochTransition(state)
-		// State root verification
-		if block.state_root != hash_tree_root(state) {
-			return nil, errors.New("block has invalid state root")
-		}
+	}
+	// State root verification
+	if block.state_root != hash_tree_root(state) {
+		return nil, errors.New("block has invalid state root")
 	}
 	return state, nil
 }
