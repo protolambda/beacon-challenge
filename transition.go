@@ -179,20 +179,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 
 			participants := get_attestation_participants(state, &attestation.data, &attestation.aggregation_bitfield)
 			custody_bit_1_participants := get_attestation_participants(state, &attestation.data, &attestation.custody_bitfield)
-			custody_bit_0_participants := make([]ValidatorIndex, 0, len(crosslink_committee.Committee)-len(custody_bit_1_participants))
-			// Get the opposite of the custody_bit_1_participants: the remaining validators in the committee
-			for _, i := range crosslink_committee.Committee {
-				found := false
-				for _, j := range custody_bit_1_participants {
-					if i == j {
-						found = true
-						break
-					}
-				}
-				if !found {
-					custody_bit_0_participants = append(custody_bit_0_participants, i)
-				}
-			}
+			custody_bit_0_participants := participants.Minus(custody_bit_1_participants)
 
 			// get lists of pubkeys for both 0 and 1 custody-bits
 			custody_bit_0_pubkeys := make([]BLSPubkey, len(custody_bit_0_participants))
@@ -711,7 +698,7 @@ func process_deposit(state *BeaconState, dep *Deposit) {
 	// TODO
 }
 
-func get_attestation_participants(state *BeaconState, data *AttestationData, bitfield *Bitfield) []ValidatorIndex {
+func get_attestation_participants(state *BeaconState, data *AttestationData, bitfield *Bitfield) ValidatorIndexSet {
 	// TODO implement spec function, instead of shortcut
 	res := make([]ValidatorIndex, 0)
 	// Phase 0: bitfields will be 0, so output list will be empty.
