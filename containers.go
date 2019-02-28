@@ -190,7 +190,7 @@ type BeaconState struct {
 	latest_crosslinks []Crosslink
 	latest_block_roots []Root
 	latest_active_index_roots []Root
-	latest_slashed_balances []uint64  // Balances slashed at every withdrawal period
+	latest_slashed_balances []Gwei  // Balances slashed at every withdrawal period
 	latest_attestations []PendingAttestation
 	batched_block_roots []Root
 

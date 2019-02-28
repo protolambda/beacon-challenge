@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sort"
 )
 
 // interface required by Justin Drake for challenge.
@@ -613,28 +614,75 @@ func EpochTransition(state *BeaconState) {
 		}
 	}
 	// Validator registry and shuffling data
-
-	// > update registry
-
-	// > process slashings
-
-	// > process exit queue
-
-	// > final updates
 	{
-		state.latest_active_index_roots[(next_epoch+ACTIVATION_EXIT_DELAY)%LATEST_ACTIVE_INDEX_ROOTS_LENGTH] = hash_tree_root(get_active_validator_indices(state.validator_registry, next_epoch+ACTIVATION_EXIT_DELAY))
-		state.latest_slashed_balances[next_epoch%LATEST_SLASHED_EXIT_LENGTH] = state.latest_slashed_balances[current_epoch%LATEST_SLASHED_EXIT_LENGTH]
-		state.latest_randao_mixes[next_epoch%LATEST_RANDAO_MIXES_LENGTH] = get_randao_mix(state, current_epoch)
-		// Remove any attestation in state.latest_attestations such that slot_to_epoch(attestation.data.slot) < current_epoch
-		// TODO: could be more efficient: no need to re-allocate a list, it can be in-place (but less readable)
-		attests := make([]PendingAttestation, 0)
-		for _, a := range state.latest_attestations {
-			if a.data.slot.ToEpoch() < current_epoch {
-				attests = append(attests, a)
+		// > update registry
+		{
+
+		}
+
+		// > process slashings
+		{
+			active_validator_indices := get_active_validator_indices(state.validator_registry, current_epoch)
+			total_balance := get_total_balance(state, active_validator_indices)
+
+			for index, validator := range state.validator_registry {
+				if validator.slashed &&
+					current_epoch == validator.withdrawable_epoch - (LATEST_SLASHED_EXIT_LENGTH / 2) {
+					epoch_index := current_epoch % LATEST_SLASHED_EXIT_LENGTH
+					total_at_start := state.latest_slashed_balances[(epoch_index + 1) % LATEST_SLASHED_EXIT_LENGTH]
+					total_at_end := state.latest_slashed_balances[epoch_index]
+					total_penalties := total_at_end - total_at_start
+					balance := get_effective_balance(state, ValidatorIndex(index))
+					penalty := Max(
+						balance * Min(total_penalties * 3, total_balance) / total_balance,
+						balance / MIN_PENALTY_QUOTIENT)
+					state.validator_balances[index] -= penalty
+				}
 			}
 		}
-		state.latest_attestations = attests
+
+		// > process exit queue
+		{
+			eligible_indices := make(ValidatorIndexSet, 0)
+			for index, validator := range state.validator_registry {
+				if validator.withdrawable_epoch != FAR_FUTURE_EPOCH &&
+					current_epoch > validator.exit_epoch + MIN_VALIDATOR_WITHDRAWABILITY_DELAY {
+					eligible_indices = append(eligible_indices, ValidatorIndex(index))
+				}
+			}
+			// Sort in order of exit epoch, and validators that exit within the same epoch exit in order of validator index
+			sort.Slice(eligible_indices, func(i int, j int) bool {
+				return state.validator_registry[eligible_indices[i]].exit_epoch < state.validator_registry[eligible_indices[j]].exit_epoch
+			})
+			// eligible_indices is sorted here (in-place sorting)
+			for dequeues, vIndex := range eligible_indices {
+				if dequeues >= MAX_EXIT_DEQUEUES_PER_EPOCH {
+					break
+				}
+				prepare_validator_for_withdrawal(state, vIndex)
+			}
+		}
+
+		// > final updates
+		{
+			state.latest_active_index_roots[(next_epoch+ACTIVATION_EXIT_DELAY)%LATEST_ACTIVE_INDEX_ROOTS_LENGTH] = hash_tree_root(get_active_validator_indices(state.validator_registry, next_epoch+ACTIVATION_EXIT_DELAY))
+			state.latest_slashed_balances[next_epoch%LATEST_SLASHED_EXIT_LENGTH] = state.latest_slashed_balances[current_epoch%LATEST_SLASHED_EXIT_LENGTH]
+			state.latest_randao_mixes[next_epoch%LATEST_RANDAO_MIXES_LENGTH] = get_randao_mix(state, current_epoch)
+			// Remove any attestation in state.latest_attestations such that slot_to_epoch(attestation.data.slot) < current_epoch
+			attests := make([]PendingAttestation, 0)
+			for _, a := range state.latest_attestations {
+				// only keep recent attestations. (for next epoch to process)
+				if a.data.slot.ToEpoch() >= current_epoch {
+					attests = append(attests, a)
+				}
+			}
+			state.latest_attestations = attests
+		}
 	}
+}
+
+func prepare_validator_for_withdrawal(state *BeaconState, index ValidatorIndex) {
+	// TODO
 }
 
 func exit_validator(state *BeaconState, index ValidatorIndex) {
