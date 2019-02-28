@@ -16,6 +16,45 @@ type DepositIndex uint64
 type Timestamp uint64
 type Seconds uint64
 
+type ValueFunction func(index ValidatorIndex) Gwei
+
+type ValidatorIndexSet []ValidatorIndex
+
+// returns a copy without the given indices
+func (vs ValidatorIndexSet) Minus(removed ValidatorIndexSet) ValidatorIndexSet {
+	res := vs.Copy()
+	res.RemoveAll(removed)
+	return res
+}
+
+func (vs ValidatorIndexSet) RemoveAll(removed ValidatorIndexSet) {
+	for i, a := range vs {
+		for _, b := range removed {
+			if a == b {
+				vs[i] = ValidatorIndex(0xffFFffFF)
+				break
+			}
+		}
+	}
+	// remove all marked indices
+	for i := 0; i < len(vs); {
+		if vs[i] == 0xffFFffFF {
+			// replace with last, and cut out last
+			last := len(vs) - 1
+			vs[i] = vs[last]
+			vs = vs[:last]
+		} else {
+			i++
+		}
+	}
+}
+
+func (vs ValidatorIndexSet) Copy() ValidatorIndexSet {
+	res := make([]ValidatorIndex, len(vs), len(vs))
+	copy(res, vs)
+	return res
+}
+
 func (s Slot) ToEpoch() Epoch {
 	return Epoch(s / SLOTS_PER_EPOCH)
 }

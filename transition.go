@@ -432,17 +432,141 @@ func EpochTransition(state *BeaconState) {
 	}
 
 	// Rewards & Penalties
+	{
+		// Note: Rewards and penalties are for participation in the previous epoch,
+		//  so the "active validator" set is drawn from get_active calls on previous_epoch
+		active_validator_indices := ValidatorIndexSet(get_active_validator_indices(state.validator_registry, previous_epoch))
 
-	// > Justification and finalization
-	// >> case 1
-	// >> case 2
+		// TODO: helper sets (order is not important)
+		previous_epoch_attester_indices := ValidatorIndexSet([]ValidatorIndex{})
+		previous_epoch_boundary_attester_indices := ValidatorIndexSet([]ValidatorIndex{})
+		previous_epoch_head_attester_indices := ValidatorIndexSet([]ValidatorIndex{})
 
-	// > Attestation inclusion
+		// TODO helper numbers
+		previous_epoch_attesting_balance := Gwei(0)
+		previous_epoch_boundary_attesting_balance := Gwei(0)
+		previous_epoch_head_attesting_balance := Gwei(0)
+		previous_total_balance := Gwei(0)
 
-	// > Crosslinks
+		base_reward_quotient := Gwei(integer_squareroot(uint64(previous_total_balance))) / BASE_REWARD_QUOTIENT
 
-	// > Ejections
+		base_reward := func(index ValidatorIndex) Gwei {
+			// magic number 5 is from spec. (TODO add reasoning?)
+			return get_effective_balance(state, index) / base_reward_quotient / 5
+		}
 
+		epochs_since_finality := next_epoch - state.finalized_epoch
+
+		inactivity_penalty := func(index ValidatorIndex) Gwei {
+			return base_reward(index) + (get_effective_balance(state, index) * Gwei(epochs_since_finality) / INACTIVITY_PENALTY_QUOTIENT / 2)
+		}
+
+		scaled_value := func(valueFn ValueFunction, scale Gwei) ValueFunction {
+			return func(index ValidatorIndex) Gwei {
+				return valueFn(index) * scale
+			}
+		}
+
+		scale_by_inclusion := func(valueFn ValueFunction) ValueFunction {
+			return func(index ValidatorIndex) Gwei {
+				return valueFn(index) / inclusion_distance(state, index)
+			}
+		}
+
+		// rewardOrSlash: true = reward, false = slash
+		applyRewardOrSlash := func(indices ValidatorIndexSet, rewardOrSlash bool, valueFn ValueFunction) {
+			for _, vIndex := range indices {
+				if rewardOrSlash {
+					state.validator_balances[vIndex] += valueFn(vIndex)
+				} else {
+					state.validator_balances[vIndex] -= valueFn(vIndex)
+				}
+			}
+		}
+
+		// > Justification and finalization
+		{
+			if epochs_since_finality <= 4 {
+				// >> case 1: finality was not too long ago
+
+				// Slash validators that were supposed to be active, but did not do their work
+				{
+					//Justification-non-participation R-penalty
+					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_attester_indices), false, base_reward)
+
+					//Boundary-attestation-non-participation R-penalty
+					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_boundary_attester_indices), false, base_reward)
+
+					//Non-canonical-participation R-penalty
+					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_head_attester_indices), false, base_reward)
+				}
+
+				// Reward active validators that do their work
+				{
+					// Justification-participation reward
+					applyRewardOrSlash(previous_epoch_attester_indices, true,
+						scaled_value(base_reward, previous_epoch_attesting_balance / previous_total_balance))
+
+					// Boundary-attestation reward
+					applyRewardOrSlash(previous_epoch_boundary_attester_indices, true,
+						scaled_value(base_reward, previous_epoch_boundary_attesting_balance / previous_total_balance))
+
+					// Canonical-participation reward
+					applyRewardOrSlash(previous_epoch_head_attester_indices, true,
+						scaled_value(base_reward, previous_epoch_head_attesting_balance / previous_total_balance))
+
+					// Attestation-Inclusion-delay reward: quicker = more reward
+					applyRewardOrSlash(previous_epoch_attester_indices, true,
+						scale_by_inclusion(scaled_value(base_reward, Gwei(MIN_ATTESTATION_INCLUSION_DELAY))))
+				}
+			} else {
+				// >> case 2: more than 4 epochs since finality
+
+				// Slash validators that were supposed to be active, but did not do their work
+				{
+					// Justification-inactivity penalty
+					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_attester_indices), false, inactivity_penalty)
+					// Boundary-attestation-Inactivity penalty
+					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_boundary_attester_indices), false, inactivity_penalty)
+					// Non-canonical-participation R-penalty
+					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_head_attester_indices), false, base_reward)
+					// Penalization measure: double inactivity penalty + R-penalty
+					applyRewardOrSlash(active_validator_indices, false, func(index ValidatorIndex) Gwei {
+						if state.validator_registry[index].slashed {
+							return (2 * inactivity_penalty(index)) + base_reward(index)
+						} else {
+							return 0
+						}
+					})
+				}
+
+				// Attestation delay measure
+				{
+					// Attestation-Inclusion-delay measure: less reward for long delays
+					applyRewardOrSlash(previous_epoch_attester_indices, false, func(index ValidatorIndex) Gwei {
+						return base_reward(index) - scale_by_inclusion(scaled_value(base_reward, Gwei(MIN_ATTESTATION_INCLUSION_DELAY)))(index)
+					})
+				}
+			}
+		}
+
+		// > Attestation inclusion
+		{
+			// Attestations should be included timely.
+
+		}
+		// > Crosslinks
+		{
+			// Crosslinks should be created by the committees
+
+		}
+		// > Ejections
+		{
+			// After we are done slashing, eject the validators that don't have enough balance left.
+
+		}
+
+	}
 	// Validator registry and shuffling data
 
 	// > update registry
@@ -466,6 +590,33 @@ func EpochTransition(state *BeaconState) {
 		}
 		state.latest_attestations = attests
 	}
+}
+
+// The largest integer x such that x**2 is less than or equal to n.
+func integer_squareroot(n uint64) uint64 {
+	// TODO: /2 can be optimized to bitshift: >> 1
+	x := n
+	y := (x + 1) / 2
+	for y < x {
+		x = y
+		y = (x + n / x) / 2
+	}
+	return x
+}
+
+func inclusion_distance(state *BeaconState, index ValidatorIndex) Gwei {
+	// TODO
+	return Gwei(0)
+}
+
+func get_active_validator_indices(validator_registry []Validator, epoch Epoch) []ValidatorIndex {
+	res := make([]ValidatorIndex, 0, len(validator_registry))
+	for i, v := range validator_registry {
+		if v.IsActive(epoch) {
+			res = append(res, ValidatorIndex(i))
+		}
+	}
+	return res
 }
 
 func get_effective_balance(state *BeaconState, index ValidatorIndex) Gwei {

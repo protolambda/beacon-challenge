@@ -255,6 +255,10 @@ type Validator struct {
 	slashed bool
 }
 
+func (v *Validator) IsActive(epoch Epoch) bool {
+	return v.activation_epoch <= epoch && epoch < v.exit_epoch
+}
+
 type PendingAttestation struct {
 	// Attester aggregation bitfield
 	aggregation_bitfield Bitfield
