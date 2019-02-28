@@ -828,8 +828,53 @@ func get_total_balance(state *BeaconState, indices []ValidatorIndex) (sum Gwei) 
 	return sum
 }
 
+// Process a deposit from Ethereum 1.0.
 func process_deposit(state *BeaconState, dep *Deposit) {
 	// TODO
+	/*
+	deposit_input = deposit.deposit_data.deposit_input
+
+    proof_is_valid = bls_verify(
+        pubkey=deposit_input.pubkey,
+        message_hash=signed_root(deposit_input, "proof_of_possession"),
+        signature=deposit_input.proof_of_possession,
+        domain=get_domain(
+            state.fork,
+            get_current_epoch(state),
+            DOMAIN_DEPOSIT,
+        )
+    )
+
+    if not proof_is_valid:
+        return
+
+    validator_pubkeys = [v.pubkey for v in state.validator_registry]
+    pubkey = deposit_input.pubkey
+    amount = deposit.deposit_data.amount
+    withdrawal_credentials = deposit_input.withdrawal_credentials
+
+    if pubkey not in validator_pubkeys:
+        # Add new validator
+        validator = Validator(
+            pubkey=pubkey,
+            withdrawal_credentials=withdrawal_credentials,
+            activation_epoch=FAR_FUTURE_EPOCH,
+            exit_epoch=FAR_FUTURE_EPOCH,
+            withdrawable_epoch=FAR_FUTURE_EPOCH,
+            initiated_exit=False,
+            slashed=False,
+        )
+
+        # Note: In phase 2 registry indices that have been withdrawn for a long time will be recycled.
+        state.validator_registry.append(validator)
+        state.validator_balances.append(amount)
+    else:
+        # Increase balance by deposit amount
+        index = validator_pubkeys.index(pubkey)
+        assert state.validator_registry[index].withdrawal_credentials == withdrawal_credentials
+
+        state.validator_balances[index] += amount
+	 */
 }
 
 func get_attestation_participants(state *BeaconState, data *AttestationData, bitfield *Bitfield) ValidatorIndexSet {
@@ -915,7 +960,47 @@ func get_block_root(state *BeaconState, slot Slot) (Root, error) {
 func verify_slashable_attestation(state *BeaconState, attestation *SlashableAttestation) bool {
 	// TODO
 
+	/*
+	// TODO Moved condition to top, compared to spec. Data can be way too big, get rid of that ASAP.
+    if len(slashable_attestation.validator_indices) > MAX_INDICES_PER_SLASHABLE_VOTE:
+        return False
+
 	// TODO verify indices explicitly with check_validator_index
+
+	if slashable_attestation.custody_bitfield != b'\x00' * len(slashable_attestation.custody_bitfield):  # [TO BE REMOVED IN PHASE 1]
+        return False
+
+    if len(slashable_attestation.validator_indices) == 0:
+        return False
+
+    for i in range(len(slashable_attestation.validator_indices) - 1):
+        if slashable_attestation.validator_indices[i] >= slashable_attestation.validator_indices[i + 1]:
+            return False
+
+    if not verify_bitfield(slashable_attestation.custody_bitfield, len(slashable_attestation.validator_indices)):
+        return False
+
+    custody_bit_0_indices = []
+    custody_bit_1_indices = []
+    for i, validator_index in enumerate(slashable_attestation.validator_indices):
+        if get_bitfield_bit(slashable_attestation.custody_bitfield, i) == 0b0:
+            custody_bit_0_indices.append(validator_index)
+        else:
+            custody_bit_1_indices.append(validator_index)
+
+    return bls_verify_multiple(
+        pubkeys=[
+            bls_aggregate_pubkeys([state.validator_registry[i].pubkey for i in custody_bit_0_indices]),
+            bls_aggregate_pubkeys([state.validator_registry[i].pubkey for i in custody_bit_1_indices]),
+        ],
+        message_hashes=[
+            hash_tree_root(AttestationDataAndCustodyBit(data=slashable_attestation.data, custody_bit=0b0)),
+            hash_tree_root(AttestationDataAndCustodyBit(data=slashable_attestation.data, custody_bit=0b1)),
+        ],
+        signature=slashable_attestation.aggregate_signature,
+        domain=get_domain(state.fork, slot_to_epoch(slashable_attestation.data.slot), DOMAIN_ATTESTATION),
+    )
+	 */
 	return false
 }
 
