@@ -296,7 +296,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 }
 
 func SlotTransition(state *BeaconState) {
-	state.slot += 1.
+	state.slot += 1
 
 	// Let previous_block_root be the hash_tree_root of the previous beacon block processed in the chain.
 	state.latest_block_roots[(state.slot - 1) % LATEST_BLOCK_ROOTS_LENGTH] = state.latest_block_roots[(state.slot - 2) % LATEST_BLOCK_ROOTS_LENGTH]
@@ -341,7 +341,18 @@ func EpochTransition(state *BeaconState) {
 	// > process exit queue
 
 	// > final updates
-
+	state.latest_active_index_roots[(next_epoch + ACTIVATION_EXIT_DELAY) % LATEST_ACTIVE_INDEX_ROOTS_LENGTH] = hash_tree_root(get_active_validator_indices(state.validator_registry, next_epoch + ACTIVATION_EXIT_DELAY))
+	state.latest_slashed_balances[next_epoch % LATEST_SLASHED_EXIT_LENGTH] = state.latest_slashed_balances[current_epoch % LATEST_SLASHED_EXIT_LENGTH]
+	state.latest_randao_mixes[next_epoch % LATEST_RANDAO_MIXES_LENGTH] = get_randao_mix(state, current_epoch)
+	// Remove any attestation in state.latest_attestations such that slot_to_epoch(attestation.data.slot) < current_epoch
+	// TODO: could be more efficient: no need to re-allocate a list, it can be in-place (but less readable)
+	attests := make([]PendingAttestation, 0)
+	for _, a := range state.latest_attestations {
+		if a.data.slot.ToEpoch() < current_epoch {
+			attests = append(attests, a)
+		}
+	}
+	state.latest_attestations = attests
 }
 
 func initiate_validator_exit(state *BeaconState, index ValidatorIndex) {
