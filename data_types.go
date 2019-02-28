@@ -123,18 +123,3 @@ func (b Bitfield) IsZero() bool {
 	}
 	return true
 }
-
-func Max(a Gwei, b Gwei) Gwei {
-	if a > b {
-		return a
-	} else {
-		return b
-	}
-}
-func Min(a Gwei, b Gwei) Gwei {
-	if a < b {
-		return a
-	} else {
-		return b
-	}
-}

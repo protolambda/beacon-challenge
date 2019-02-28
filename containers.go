@@ -271,12 +271,22 @@ type PendingAttestation struct {
 }
 
 type Fork struct {
+	// TODO: fork versions are 64 bits, but usage is 32 bits in BLS domain. Spec unclear about it.
 	// Previous fork version
 	previous_version uint64
 	// Current fork version
 	current_version uint64
 	// Fork epoch number
 	epoch Epoch
+}
+
+// Return the fork version of the given epoch
+func (f Fork) GetVersion(epoch Epoch) uint64 {
+	if epoch < f.epoch {
+		return f.previous_version
+	} else {
+		return f.current_version
+	}
 }
 
 type Eth1Data struct {

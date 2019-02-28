@@ -52,7 +52,11 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 		if !bls_verify(proposer.pubkey, hash_tree_root(state.Epoch()), block.randao_reveal, get_domain(state.fork, state.Epoch(), DOMAIN_RANDAO)) {
 			return errors.New("randao invalid")
 		}
-		state.latest_randao_mixes[state.Epoch()%LATEST_RANDAO_MIXES_LENGTH] = xorBytes32(get_randao_mix(state, state.Epoch()), hash(block.randao_reveal))
+		randao_mix, err := get_randao_mix(state, state.Epoch())
+		if err != nil {
+			return err
+		}
+		state.latest_randao_mixes[state.Epoch()%LATEST_RANDAO_MIXES_LENGTH] = xorBytes32(randao_mix, hash(block.randao_reveal))
 	}
 
 	// Eth1 data
@@ -90,7 +94,9 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 				bls_verify(proposer.pubkey, signed_root(proposer_slashing.proposal_2, "signature"), proposer_slashing.proposal_2.signature, get_domain(state.fork, proposer_slashing.proposal_2.slot.ToEpoch(), DOMAIN_PROPOSAL))) {
 				return errors.New(fmt.Sprintf("proposer slashing %d is invalid", i))
 			}
-			slash_validator(state, proposer_slashing.proposer_index)
+			if err := slash_validator(state, proposer_slashing.proposer_index); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -117,7 +123,9 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			for _, v1 := range slashable_attestation_1.validator_indices {
 				for _, v2 := range slashable_attestation_1.validator_indices {
 					if v1 == v2 && !state.validator_registry[v1].slashed {
-						slash_validator(state, v1)
+						if err := slash_validator(state, v1); err != nil {
+							return err
+						}
 						slashedAny = true
 						// continue to look for next validator in outer loop (because there are no duplicates in attestation)
 						continue ValLoop
@@ -318,7 +326,27 @@ func EpochTransition(state *BeaconState) {
 	previous_epoch := state.Epoch()
 	next_epoch := current_epoch + 1
 
-	// TODO more helper stuff
+	// attestation-source-index for a given epoch, by validator index.
+	// The earliest attestation (by inclusion_slot) is referenced in this map.
+	previous_epoch_earliest_attestations := make(map[ValidatorIndex]uint64)
+	//current_epoch_earliest_attestations := make(map[ValidatorIndex]uint64)
+	for i, att := range state.latest_attestations {
+		ep := att.data.slot.ToEpoch()
+		for _, participant := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+			if ep == previous_epoch {
+				if existingIndex, ok := previous_epoch_earliest_attestations[participant];
+					!ok || state.latest_attestations[existingIndex].inclusion_slot < att.inclusion_slot {
+					previous_epoch_earliest_attestations[participant] = uint64(i)
+				}
+			}
+			//if ep == current_epoch {
+			//	if existingIndex, ok := current_epoch_attestations[participant];
+			//		!ok || state.latest_attestations[existingIndex].inclusion_slot < att.inclusion_slot {
+			//		current_epoch_attestations[participant] = uint64(i)
+			//	}
+			//}
+		}
+	}
 
 	// Eth1 Data
 	{
@@ -336,13 +364,58 @@ func EpochTransition(state *BeaconState) {
 		}
 	}
 
+	// Helper data
+	// Note: Rewards and penalties are for participation in the previous epoch,
+	//  so the "active validator" set is drawn from get_active calls on previous_epoch
+	previous_active_validator_indices := ValidatorIndexSet(get_active_validator_indices(state.validator_registry, previous_epoch))
+
+	// Copy over the keys of our per-validator map to get a set of validator indices with previous epoch attestations.
+	previous_epoch_attester_indices := make(ValidatorIndexSet, 0, len(previous_epoch_earliest_attestations))
+	for vIndex := range previous_epoch_earliest_attestations {
+		previous_epoch_attester_indices = append(previous_epoch_attester_indices, vIndex)
+	}
+	previous_epoch_boundary_attester_indices := make(ValidatorIndexSet, 0)
+	previous_epoch_head_attester_indices := make(ValidatorIndexSet, 0)
+	current_epoch_boundary_attester_indices := make(ValidatorIndexSet, 0)
+	for _, att := range state.latest_attestations {
+		ep := att.data.slot.ToEpoch()
+		if ep == previous_epoch {
+
+			boundary_block_root, err := get_block_root(state, previous_epoch.GetStartSlot())
+			isForBoundary := err == nil && att.data.epoch_boundary_root == boundary_block_root
+
+			head_block_root, err := get_block_root(state, att.data.slot)
+			isForHead := err == nil && att.data.beacon_block_root == head_block_root
+
+			for _, vIndex := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+
+				// If the attestation is for a block boundary:
+				if isForBoundary {
+					previous_epoch_boundary_attester_indices = append(previous_epoch_boundary_attester_indices, vIndex)
+				}
+
+				if isForHead {
+					previous_epoch_head_attester_indices = append(previous_epoch_head_attester_indices, vIndex)
+				}
+			}
+		} else if ep == current_epoch {
+			boundary_block_root, err := get_block_root(state, current_epoch.GetStartSlot())
+			isForBoundary := err == nil && att.data.epoch_boundary_root == boundary_block_root
+			for _, vIndex := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+				// If the attestation is for a block boundary:
+				if isForBoundary {
+					current_epoch_boundary_attester_indices = append(current_epoch_boundary_attester_indices, vIndex)
+				}
+			}
+		}
+	}
+
 	// Justification and finalization
 	{
-		// TODO
-		previous_epoch_boundary_attesting_balance := Gwei(0)
-		current_epoch_boundary_attesting_balance := Gwei(0)
-		previous_total_balance := Gwei(0)
-		current_total_balance := Gwei(0)
+		previous_epoch_boundary_attesting_balance := get_total_balance(state, previous_epoch_boundary_attester_indices)
+		current_epoch_boundary_attesting_balance := get_total_balance(state, current_epoch_boundary_attester_indices)
+		previous_total_balance := get_total_balance(state, get_active_validator_indices(state.validator_registry, previous_epoch))
+		current_total_balance := get_total_balance(state, get_active_validator_indices(state.validator_registry, current_epoch))
 
 		// > Justification
 		new_justified_epoch := state.justified_epoch
@@ -424,8 +497,23 @@ func EpochTransition(state *BeaconState) {
 						}
 					}
 				}
-				// TODO remember attesters of winning root
-				crosslink_winners[winning_root] = ValidatorIndexSet{}
+				// we need to remember attesters of winning root (for later rewarding, and exclusion to slashing)
+				winning_attesting_committee_members := make(ValidatorIndexSet, 0)
+				for _, att := range state.latest_attestations {
+					if ep := att.data.slot.ToEpoch();
+						ep == previous_epoch || ep == current_epoch &&
+							att.data.shard == cross_comm.Shard &&
+							att.data.crosslink_data_root == winning_root {
+						for _, participant := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+							for _, vIndex := range cross_comm.Committee {
+								if participant == vIndex {
+									winning_attesting_committee_members = append(winning_attesting_committee_members, vIndex)
+								}
+							}
+						}
+					}
+				}
+				crosslink_winners[winning_root] = winning_attesting_committee_members
 				winning_roots[cross_comm.Shard] = winning_root
 				crosslink_winners_weight[winning_root] = winning_weight
 
@@ -441,20 +529,16 @@ func EpochTransition(state *BeaconState) {
 
 	// Rewards & Penalties
 	{
-		// Note: Rewards and penalties are for participation in the previous epoch,
-		//  so the "active validator" set is drawn from get_active calls on previous_epoch
-		previous_active_validator_indices := ValidatorIndexSet(get_active_validator_indices(state.validator_registry, previous_epoch))
+		// Sum balances of the sets of validators from earlier
+		previous_epoch_attesting_balance := get_total_balance(state, previous_epoch_attester_indices)
+		previous_epoch_boundary_attesting_balance := get_total_balance(state, previous_epoch_boundary_attester_indices)
+		previous_epoch_head_attesting_balance := get_total_balance(state, previous_epoch_head_attester_indices)
 
-		// TODO: helper sets (order is not important)
-		previous_epoch_attester_indices := ValidatorIndexSet([]ValidatorIndex{})
-		previous_epoch_boundary_attester_indices := ValidatorIndexSet([]ValidatorIndex{})
-		previous_epoch_head_attester_indices := ValidatorIndexSet([]ValidatorIndex{})
-
-		// TODO helper numbers
-		previous_epoch_attesting_balance := Gwei(0)
-		previous_epoch_boundary_attesting_balance := Gwei(0)
-		previous_epoch_head_attesting_balance := Gwei(0)
-		previous_total_balance := Gwei(0)
+		// Note: previous_total_balance and previous_epoch_boundary_attesting_balance balance might be marginally
+		// different than the actual balances during previous epoch transition.
+		// Due to the tight bound on validator churn each epoch and small per-epoch rewards/penalties,
+		// the potential balance difference is very low and only marginally affects consensus safety.
+		previous_total_balance := get_total_balance(state, get_active_validator_indices(state.validator_registry, previous_epoch))
 
 		base_reward_quotient := Gwei(integer_squareroot(uint64(previous_total_balance))) / BASE_REWARD_QUOTIENT
 
@@ -474,10 +558,14 @@ func EpochTransition(state *BeaconState) {
 				return valueFn(index) * scale
 			}
 		}
+		inclusion_distance := func(index ValidatorIndex) Slot {
+			a := &state.latest_attestations[previous_epoch_earliest_attestations[index]]
+			return a.inclusion_slot - a.data.slot
+		}
 
 		scale_by_inclusion := func(valueFn ValueFunction) ValueFunction {
 			return func(index ValidatorIndex) Gwei {
-				return valueFn(index) / inclusion_distance(state, index)
+				return valueFn(index) / Gwei(inclusion_distance(index))
 			}
 		}
 
@@ -667,7 +755,9 @@ func EpochTransition(state *BeaconState) {
 		{
 			state.latest_active_index_roots[(next_epoch+ACTIVATION_EXIT_DELAY)%LATEST_ACTIVE_INDEX_ROOTS_LENGTH] = hash_tree_root(get_active_validator_indices(state.validator_registry, next_epoch+ACTIVATION_EXIT_DELAY))
 			state.latest_slashed_balances[next_epoch%LATEST_SLASHED_EXIT_LENGTH] = state.latest_slashed_balances[current_epoch%LATEST_SLASHED_EXIT_LENGTH]
-			state.latest_randao_mixes[next_epoch%LATEST_RANDAO_MIXES_LENGTH] = get_randao_mix(state, current_epoch)
+			// err can be ignored, current_epoch is trusted.
+			randao_mix, _ := get_randao_mix(state, current_epoch)
+			state.latest_randao_mixes[next_epoch%LATEST_RANDAO_MIXES_LENGTH] = randao_mix
 			// Remove any attestation in state.latest_attestations such that slot_to_epoch(attestation.data.slot) < current_epoch
 			attests := make([]PendingAttestation, 0)
 			for _, a := range state.latest_attestations {
@@ -681,29 +771,34 @@ func EpochTransition(state *BeaconState) {
 	}
 }
 
+// Set the validator with the given index as withdrawable
+// MIN_VALIDATOR_WITHDRAWABILITY_DELAY after the current epoch.
 func prepare_validator_for_withdrawal(state *BeaconState, index ValidatorIndex) {
-	// TODO
+	validator := &state.validator_registry[index]
+	validator.withdrawable_epoch = state.Epoch() + MIN_VALIDATOR_WITHDRAWABILITY_DELAY
 }
 
+// Return the epoch at which an activation or exit triggered in epoch takes effect.
+func get_delayed_activation_exit_epoch(epoch Epoch) Epoch {
+	return epoch + 1 + ACTIVATION_EXIT_DELAY
+}
+
+// Exit the validator of the given index
 func exit_validator(state *BeaconState, index ValidatorIndex) {
-	// TODO
-}
+	validator := &state.validator_registry[index]
 
-// The largest integer x such that x**2 is less than or equal to n.
-func integer_squareroot(n uint64) uint64 {
-	// TODO: /2 can be optimized to bitshift: >> 1
-	x := n
-	y := (x + 1) / 2
-	for y < x {
-		x = y
-		y = (x + n / x) / 2
+	exit_epoch := get_delayed_activation_exit_epoch(state.Epoch())
+	// The following updates only occur if not previous exited
+	if validator.exit_epoch > exit_epoch {
+		return
 	}
-	return x
+	validator.exit_epoch = exit_epoch
 }
 
-func inclusion_distance(state *BeaconState, index ValidatorIndex) Gwei {
-	// TODO
-	return Gwei(0)
+// Initiate the validator of the given index
+func initiate_validator_exit(state *BeaconState, index ValidatorIndex) {
+	validator := &state.validator_registry[index]
+	validator.initiated_exit = true
 }
 
 func get_active_validator_indices(validator_registry []Validator, epoch Epoch) []ValidatorIndex {
@@ -716,6 +811,7 @@ func get_active_validator_indices(validator_registry []Validator, epoch Epoch) [
 	return res
 }
 
+// Return the effective balance (also known as "balance at stake") for a validator with the given index.
 func get_effective_balance(state *BeaconState, index ValidatorIndex) Gwei {
 	// TODO: should there be a range check?
 	b := state.validator_balances[index]
@@ -726,20 +822,13 @@ func get_effective_balance(state *BeaconState, index ValidatorIndex) Gwei {
 	}
 }
 
+// Return the combined effective balance of an array of validators.
 func get_total_balance(state *BeaconState, indices []ValidatorIndex) Gwei {
 	sum := Gwei(0)
 	for _, vIndex := range indices {
 		sum += get_effective_balance(state, vIndex)
 	}
 	return sum
-}
-
-func initiate_validator_exit(state *BeaconState, index ValidatorIndex) {
-	// TODO
-}
-
-func get_delayed_activation_exit_epoch(epoch Epoch) Epoch {
-	return epoch + 1 + ACTIVATION_EXIT_DELAY
 }
 
 func process_deposit(state *BeaconState, dep *Deposit) {
@@ -825,37 +914,63 @@ func get_block_root(state *BeaconState, slot Slot) (Root, error) {
 	return state.latest_block_roots[slot % LATEST_BLOCK_ROOTS_LENGTH], nil
 }
 
+// Verify validity of slashable_attestation fields.
 func verify_slashable_attestation(state *BeaconState, attestation *SlashableAttestation) bool {
 	// TODO
 	return false
 }
 
+// Check if a and b have the same target epoch. //TODO: spec has wrong wording here (?)
 func is_double_vote(a *AttestationData, b *AttestationData) bool {
-	// TODO
-	return false
+	return a.slot.ToEpoch() == b.slot.ToEpoch()
 }
 
-
+// Check if a surrounds b.
 func is_surround_vote(a *AttestationData, b *AttestationData) bool {
-	// TODO
-	return false
+	sourceA := a.justified_epoch
+	sourceB := b.justified_epoch
+	targetA := a.slot.ToEpoch()
+	targetB := b.slot.ToEpoch()
+	return sourceA < sourceB && targetB < targetA
 }
 
-func slash_validator(state *BeaconState, index ValidatorIndex) {
-	// TODO
+// Slash the validator with index index.
+func slash_validator(state *BeaconState, index ValidatorIndex) error {
+	validator := &state.validator_registry[index]
+	// [TO BE REMOVED IN PHASE 2] // TODO: add reasoning, spec unclear
+	if state.slot >= validator.withdrawable_epoch.GetStartSlot() {
+		return errors.New("cannot slash validator after withdrawal epoch")
+	}
+	exit_validator(state, index)
+	state.latest_slashed_balances[state.Epoch() % LATEST_SLASHED_EXIT_LENGTH] += get_effective_balance(state, index)
+
+	whistleblower_index := get_beacon_proposer_index(state, state.slot)
+	whistleblower_reward := get_effective_balance(state, index) / WHISTLEBLOWER_REWARD_QUOTIENT
+	state.validator_balances[whistleblower_index] += whistleblower_reward
+	state.validator_balances[index] -= whistleblower_reward
+	validator.slashed = true
+	validator.withdrawable_epoch = state.Epoch() + LATEST_SLASHED_EXIT_LENGTH
+	return nil
 }
 
-func get_randao_mix(state *BeaconState, epoch Epoch) Bytes32 {
-	// TODO
-	return Bytes32{}
+//  Return the randao mix at a recent epoch
+func get_randao_mix(state *BeaconState, epoch Epoch) (Bytes32, error) {
+	if !(state.Epoch() - LATEST_RANDAO_MIXES_LENGTH < epoch && epoch <= state.Epoch()) {
+		return Bytes32{}, errors.New("cannot get randao mix for out-of-bounds epoch")
+	}
+	return state.latest_randao_mixes[epoch % LATEST_RANDAO_MIXES_LENGTH], nil
 }
 
+// Get the domain number that represents the fork meta and signature domain.
 func get_domain(fork Fork, epoch Epoch, dom BlsDomain) BlsDomain {
-	// TODO
-	return 0
+	// combine fork version with domain.
+	// TODO: spec is unclear about input size expectations.
+	// TODO And is "+" different than packing into 64 bits here? I.e. ((32 bits fork version << 32) | (dom 32 bits))
+	return BlsDomain(fork.GetVersion(epoch) << 32) + dom
 }
 
+// Return the beacon proposer index for the slot.
 func get_beacon_proposer_index(state *BeaconState, slot Slot) ValidatorIndex {
-	// TODO
-	return 0
+	first_committee_data := get_crosslink_committees_at_slot(state, slot, false)[0]
+	return first_committee_data.Committee[slot % Slot(len(first_committee_data.Committee))]
 }
