@@ -36,258 +36,278 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 	}
 
 	// Block signature
-	proposer := state.validator_registry[get_beacon_proposer_index(state, state.slot)]
-	proposal := Proposal{slot: block.slot, shard: BEACON_CHAIN_SHARD_NUMBER, block_root: signed_root(block, "signature"), signature: block.signature}
-	if !bls_verify(proposer.pubkey, signed_root(proposal, "signature"), proposal.signature, get_domain(state.fork, state.Epoch(), DOMAIN_PROPOSAL)) {
-		return errors.New("block signature invalid")
+	{
+		proposer := state.validator_registry[get_beacon_proposer_index(state, state.slot)]
+		proposal := Proposal{slot: block.slot, shard: BEACON_CHAIN_SHARD_NUMBER, block_root: signed_root(block, "signature"), signature: block.signature}
+		if !bls_verify(proposer.pubkey, signed_root(proposal, "signature"), proposal.signature, get_domain(state.fork, state.Epoch(), DOMAIN_PROPOSAL)) {
+			return errors.New("block signature invalid")
+		}
 	}
 
 
 	// RANDAO
-	if !bls_verify(proposer.pubkey, hash_tree_root(state.Epoch()), block.randao_reveal, get_domain(state.fork, state.Epoch(), DOMAIN_RANDAO)) {
-		return errors.New("randao invalid")
+	{
+		proposer := state.validator_registry[get_beacon_proposer_index(state, state.slot)]
+		if !bls_verify(proposer.pubkey, hash_tree_root(state.Epoch()), block.randao_reveal, get_domain(state.fork, state.Epoch(), DOMAIN_RANDAO)) {
+			return errors.New("randao invalid")
+		}
+		state.latest_randao_mixes[state.Epoch()%LATEST_RANDAO_MIXES_LENGTH] = xorBytes32(get_randao_mix(state, state.Epoch()), hash(block.randao_reveal))
 	}
-	state.latest_randao_mixes[state.Epoch() % LATEST_RANDAO_MIXES_LENGTH] = xorBytes32(get_randao_mix(state, state.Epoch()), hash(block.randao_reveal))
 
 	// Eth1 data
-	// If there exists an eth1_data_vote in state.eth1_data_votes for which eth1_data_vote.eth1_data == block.eth1_data (there will be at most one), set eth1_data_vote.vote_count += 1.
-	// Otherwise, append to state.eth1_data_votes a new Eth1DataVote(eth1_data=block.eth1_data, vote_count=1).
-	found := false
-	for i, vote := range state.eth1_data_votes {
-		if vote.eth1_data == block.eth1_data {
-			state.eth1_data_votes[i].vote_count += 1
-			found = true
-			break
+	{
+		// If there exists an eth1_data_vote in state.eth1_data_votes for which eth1_data_vote.eth1_data == block.eth1_data (there will be at most one), set eth1_data_vote.vote_count += 1.
+		// Otherwise, append to state.eth1_data_votes a new Eth1DataVote(eth1_data=block.eth1_data, vote_count=1).
+		found := false
+		for i, vote := range state.eth1_data_votes {
+			if vote.eth1_data == block.eth1_data {
+				state.eth1_data_votes[i].vote_count += 1
+				found = true
+				break
+			}
 		}
-	}
-	if !found {
-		state.eth1_data_votes = append(state.eth1_data_votes, Eth1DataVote{eth1_data: block.eth1_data, vote_count: 1})
+		if !found {
+			state.eth1_data_votes = append(state.eth1_data_votes, Eth1DataVote{eth1_data: block.eth1_data, vote_count: 1})
+		}
 	}
 
 	// Transactions
 	// START ------------------------------
 
 	// Proposer slashings
-	if len(block.body.proposer_slashings) > MAX_PROPOSER_SLASHINGS {
-		return errors.New("too many proposer slashings")
-	}
-	for i, proposer_slashing := range block.body.proposer_slashings {
-		proposer := state.validator_registry[proposer_slashing.proposer_index]
-		if !(proposer_slashing.proposal_1.slot == proposer_slashing.proposal_2.slot &&
-			proposer_slashing.proposal_1.shard == proposer_slashing.proposal_2.shard &&
-			proposer_slashing.proposal_1.block_root != proposer_slashing.proposal_2.block_root &&
-			proposer.slashed == false &&
-			bls_verify(proposer.pubkey, signed_root(proposer_slashing.proposal_1, "signature"), proposer_slashing.proposal_1.signature, get_domain(state.fork, proposer_slashing.proposal_1.slot.ToEpoch(), DOMAIN_PROPOSAL)) &&
-			bls_verify(proposer.pubkey, signed_root(proposer_slashing.proposal_2, "signature"), proposer_slashing.proposal_2.signature, get_domain(state.fork, proposer_slashing.proposal_2.slot.ToEpoch(), DOMAIN_PROPOSAL))) {
-			return errors.New(fmt.Sprintf("proposer slashing %d is invalid", i))
+	{
+		if len(block.body.proposer_slashings) > MAX_PROPOSER_SLASHINGS {
+			return errors.New("too many proposer slashings")
 		}
-		slash_validator(state, proposer_slashing.proposer_index)
+		for i, proposer_slashing := range block.body.proposer_slashings {
+			proposer := state.validator_registry[proposer_slashing.proposer_index]
+			if !(proposer_slashing.proposal_1.slot == proposer_slashing.proposal_2.slot &&
+				proposer_slashing.proposal_1.shard == proposer_slashing.proposal_2.shard &&
+				proposer_slashing.proposal_1.block_root != proposer_slashing.proposal_2.block_root &&
+				proposer.slashed == false &&
+				bls_verify(proposer.pubkey, signed_root(proposer_slashing.proposal_1, "signature"), proposer_slashing.proposal_1.signature, get_domain(state.fork, proposer_slashing.proposal_1.slot.ToEpoch(), DOMAIN_PROPOSAL)) &&
+				bls_verify(proposer.pubkey, signed_root(proposer_slashing.proposal_2, "signature"), proposer_slashing.proposal_2.signature, get_domain(state.fork, proposer_slashing.proposal_2.slot.ToEpoch(), DOMAIN_PROPOSAL))) {
+				return errors.New(fmt.Sprintf("proposer slashing %d is invalid", i))
+			}
+			slash_validator(state, proposer_slashing.proposer_index)
+		}
 	}
 
 	// Attester slashings
-	if len(block.body.attester_slashings) > MAX_ATTESTER_SLASHINGS {
-		return errors.New("too many attester slashings")
-	}
-	for i, attester_slashing := range block.body.attester_slashings {
-		slashable_attestation_1 := &attester_slashing.slashable_attestation_1
-		slashable_attestation_2 := &attester_slashing.slashable_attestation_2
-		// verify the attester_slashing
-		if !(slashable_attestation_1.data != slashable_attestation_2.data &&
-			(is_double_vote(&slashable_attestation_1.data, &slashable_attestation_2.data) ||
-				is_surround_vote(&slashable_attestation_1.data, &slashable_attestation_2.data)) &&
-			verify_slashable_attestation(state, slashable_attestation_1) &&
-			verify_slashable_attestation(state, slashable_attestation_2)) {
-			return errors.New(fmt.Sprintf("attester slashing %d is invalid", i))
+	{
+		if len(block.body.attester_slashings) > MAX_ATTESTER_SLASHINGS {
+			return errors.New("too many attester slashings")
 		}
-		// keep track of effectiveness
-		slashedAny := false
-		// run slashings where applicable
-		ValLoop: for _, v1 := range slashable_attestation_1.validator_indices {
-			for _, v2 := range slashable_attestation_1.validator_indices {
-				if v1 == v2 && !state.validator_registry[v1].slashed {
-					slash_validator(state, v1)
-					slashedAny = true
-					// continue to look for next validator in outer loop (because there are no duplicates in attestation)
-					continue ValLoop
+		for i, attester_slashing := range block.body.attester_slashings {
+			slashable_attestation_1 := &attester_slashing.slashable_attestation_1
+			slashable_attestation_2 := &attester_slashing.slashable_attestation_2
+			// verify the attester_slashing
+			if !(slashable_attestation_1.data != slashable_attestation_2.data &&
+				(is_double_vote(&slashable_attestation_1.data, &slashable_attestation_2.data) ||
+					is_surround_vote(&slashable_attestation_1.data, &slashable_attestation_2.data)) &&
+				verify_slashable_attestation(state, slashable_attestation_1) &&
+				verify_slashable_attestation(state, slashable_attestation_2)) {
+				return errors.New(fmt.Sprintf("attester slashing %d is invalid", i))
+			}
+			// keep track of effectiveness
+			slashedAny := false
+			// run slashings where applicable
+		ValLoop:
+			for _, v1 := range slashable_attestation_1.validator_indices {
+				for _, v2 := range slashable_attestation_1.validator_indices {
+					if v1 == v2 && !state.validator_registry[v1].slashed {
+						slash_validator(state, v1)
+						slashedAny = true
+						// continue to look for next validator in outer loop (because there are no duplicates in attestation)
+						continue ValLoop
+					}
 				}
 			}
-		}
-		// "Verify that len(slashable_indices) >= 1."
-		if !slashedAny {
-			return errors.New(fmt.Sprintf("attester slashing %d is not effective, hence invalid", i))
+			// "Verify that len(slashable_indices) >= 1."
+			if !slashedAny {
+				return errors.New(fmt.Sprintf("attester slashing %d is not effective, hence invalid", i))
+			}
 		}
 	}
 
 	// Attestations
-	if len(block.body.attestations) > MAX_ATTESTATIONS {
-		return errors.New("too many attestations")
-	}
-	for i, attestation := range block.body.attestations {
-
-		justified_epoch := state.previous_justified_epoch
-		if (attestation.data.slot + 1).ToEpoch() >= state.Epoch() {
-			justified_epoch = state.justified_epoch
+	{
+		if len(block.body.attestations) > MAX_ATTESTATIONS {
+			return errors.New("too many attestations")
 		}
-		blockRoot, blockRootErr := get_block_root(state, attestation.data.justified_epoch.GetStartSlot())
-		if !(attestation.data.slot >= GENESIS_SLOT &&
-			attestation.data.slot + MIN_ATTESTATION_INCLUSION_DELAY <= state.slot &&
-			state.slot < attestation.data.slot + SLOTS_PER_EPOCH &&
-			attestation.data.justified_epoch == justified_epoch &&
-			(blockRootErr == nil && attestation.data.justified_block_root == blockRoot) &&
-			(state.latest_crosslinks[attestation.data.shard] == attestation.data.latest_crosslink ||
-				state.latest_crosslinks[attestation.data.shard] == Crosslink{crosslink_data_root: attestation.data.crosslink_data_root, epoch: attestation.data.slot.ToEpoch()})) {
-			return errors.New(fmt.Sprintf("attestation %d is not valid", i))
-		}
-		// Verify bitfields and aggregate signature
+		for i, attestation := range block.body.attestations {
 
-		// phase 0 only:
-		if !(attestation.custody_bitfield.IsZero() && attestation.aggregation_bitfield.IsZero()) {
-			return errors.New(fmt.Sprintf("attestation %d has non-zero bitfields, illegal in phase 0", i))
-		}
-
-		crosslink_committees := get_crosslink_committees_at_slot(state, attestation.data.slot, false)
-		crosslink_committee := CrosslinkCommittee{}
-		for _, committee := range crosslink_committees {
-			if committee.Shard == attestation.data.shard {
-				crosslink_committee = committee
-				break
+			justified_epoch := state.previous_justified_epoch
+			if (attestation.data.slot + 1).ToEpoch() >= state.Epoch() {
+				justified_epoch = state.justified_epoch
 			}
-		}
-		// TODO spec is weak here: it's not very explicit about length of bitfields.
-		//  Let's just make sure they are the size of the committee
-		if attestation.aggregation_bitfield.Length == uint64(len(crosslink_committee.Committee)) ||
-			attestation.custody_bitfield.Length == uint64(len(crosslink_committee.Committee)) {
-			return errors.New(fmt.Sprintf("attestation %d has bitfield(s) with incorrect size", i))
-		}
-		// phase 0 only
-		if !attestation.aggregation_bitfield.IsZero() || !attestation.custody_bitfield.IsZero() {
-			return errors.New(fmt.Sprintf("attestation %d has non-zero bitfield(s)", i))
-		}
+			blockRoot, blockRootErr := get_block_root(state, attestation.data.justified_epoch.GetStartSlot())
+			if !(attestation.data.slot >= GENESIS_SLOT &&
+				attestation.data.slot+MIN_ATTESTATION_INCLUSION_DELAY <= state.slot &&
+				state.slot < attestation.data.slot+SLOTS_PER_EPOCH &&
+				attestation.data.justified_epoch == justified_epoch &&
+				(blockRootErr == nil && attestation.data.justified_block_root == blockRoot) &&
+				(state.latest_crosslinks[attestation.data.shard] == attestation.data.latest_crosslink ||
+					state.latest_crosslinks[attestation.data.shard] == Crosslink{crosslink_data_root: attestation.data.crosslink_data_root, epoch: attestation.data.slot.ToEpoch()})) {
+				return errors.New(fmt.Sprintf("attestation %d is not valid", i))
+			}
+			// Verify bitfields and aggregate signature
 
-		participants := get_attestation_participants(state, &attestation.data, &attestation.aggregation_bitfield)
-		custody_bit_1_participants := get_attestation_participants(state, &attestation.data, &attestation.custody_bitfield)
-		custody_bit_0_participants := make([]ValidatorIndex, 0, len(crosslink_committee.Committee) - len(custody_bit_1_participants))
-		// Get the opposite of the custody_bit_1_participants: the remaining validators in the committee
-		for _, i := range crosslink_committee.Committee {
-			found := false
-			for _, j := range custody_bit_1_participants {
-				if i == j {
-					found = true
+			// phase 0 only:
+			if !(attestation.custody_bitfield.IsZero() && attestation.aggregation_bitfield.IsZero()) {
+				return errors.New(fmt.Sprintf("attestation %d has non-zero bitfields, illegal in phase 0", i))
+			}
+
+			crosslink_committees := get_crosslink_committees_at_slot(state, attestation.data.slot, false)
+			crosslink_committee := CrosslinkCommittee{}
+			for _, committee := range crosslink_committees {
+				if committee.Shard == attestation.data.shard {
+					crosslink_committee = committee
 					break
 				}
 			}
-			if !found {
-				custody_bit_0_participants = append(custody_bit_0_participants, i)
+			// TODO spec is weak here: it's not very explicit about length of bitfields.
+			//  Let's just make sure they are the size of the committee
+			if attestation.aggregation_bitfield.Length == uint64(len(crosslink_committee.Committee)) ||
+				attestation.custody_bitfield.Length == uint64(len(crosslink_committee.Committee)) {
+				return errors.New(fmt.Sprintf("attestation %d has bitfield(s) with incorrect size", i))
 			}
-		}
+			// phase 0 only
+			if !attestation.aggregation_bitfield.IsZero() || !attestation.custody_bitfield.IsZero() {
+				return errors.New(fmt.Sprintf("attestation %d has non-zero bitfield(s)", i))
+			}
 
-		// get lists of pubkeys for both 0 and 1 custody-bits
-		custody_bit_0_pubkeys := make([]BLSPubkey, len(custody_bit_0_participants))
-		for i, v := range custody_bit_0_participants {
-			custody_bit_0_pubkeys[i] = state.validator_registry[v].pubkey
-		}
-		custody_bit_1_pubkeys := make([]BLSPubkey, len(custody_bit_1_participants))
-		for i, v := range custody_bit_1_participants {
-			custody_bit_1_pubkeys[i] = state.validator_registry[v].pubkey
-		}
-		// aggregate each of the two lists
-		pubKeys := []BLSPubkey{
-			bls_aggregate_pubkeys(custody_bit_0_pubkeys),
-			bls_aggregate_pubkeys(custody_bit_1_pubkeys),
-		}
-		// hash the attestation data with 0 and 1 as bit
-		hashes := []Root{
-			hash_tree_root(AttestationDataAndCustodyBit{attestation.data, false}),
-			hash_tree_root(AttestationDataAndCustodyBit{attestation.data, true}),
-		}
-		// now verify the two
-		if !bls_verify_multiple(pubKeys, hashes, attestation.aggregate_signature,
-			get_domain(state.fork, attestation.data.slot.ToEpoch(), DOMAIN_ATTESTATION)) {
-			return errors.New(fmt.Sprintf("attestation %d has invalid aggregated BLS signature", i))
-		}
+			participants := get_attestation_participants(state, &attestation.data, &attestation.aggregation_bitfield)
+			custody_bit_1_participants := get_attestation_participants(state, &attestation.data, &attestation.custody_bitfield)
+			custody_bit_0_participants := make([]ValidatorIndex, 0, len(crosslink_committee.Committee)-len(custody_bit_1_participants))
+			// Get the opposite of the custody_bit_1_participants: the remaining validators in the committee
+			for _, i := range crosslink_committee.Committee {
+				found := false
+				for _, j := range custody_bit_1_participants {
+					if i == j {
+						found = true
+						break
+					}
+				}
+				if !found {
+					custody_bit_0_participants = append(custody_bit_0_participants, i)
+				}
+			}
 
-		// phase 0 only:
-		if attestation.data.crosslink_data_root != ZERO_HASH {
-			return errors.New(fmt.Sprintf("attestation %d has invalid crosslink: root must be 0 in phase 0", i))
+			// get lists of pubkeys for both 0 and 1 custody-bits
+			custody_bit_0_pubkeys := make([]BLSPubkey, len(custody_bit_0_participants))
+			for i, v := range custody_bit_0_participants {
+				custody_bit_0_pubkeys[i] = state.validator_registry[v].pubkey
+			}
+			custody_bit_1_pubkeys := make([]BLSPubkey, len(custody_bit_1_participants))
+			for i, v := range custody_bit_1_participants {
+				custody_bit_1_pubkeys[i] = state.validator_registry[v].pubkey
+			}
+			// aggregate each of the two lists
+			pubKeys := []BLSPubkey{
+				bls_aggregate_pubkeys(custody_bit_0_pubkeys),
+				bls_aggregate_pubkeys(custody_bit_1_pubkeys),
+			}
+			// hash the attestation data with 0 and 1 as bit
+			hashes := []Root{
+				hash_tree_root(AttestationDataAndCustodyBit{attestation.data, false}),
+				hash_tree_root(AttestationDataAndCustodyBit{attestation.data, true}),
+			}
+			// now verify the two
+			if !bls_verify_multiple(pubKeys, hashes, attestation.aggregate_signature,
+				get_domain(state.fork, attestation.data.slot.ToEpoch(), DOMAIN_ATTESTATION)) {
+				return errors.New(fmt.Sprintf("attestation %d has invalid aggregated BLS signature", i))
+			}
+
+			// phase 0 only:
+			if attestation.data.crosslink_data_root != ZERO_HASH {
+				return errors.New(fmt.Sprintf("attestation %d has invalid crosslink: root must be 0 in phase 0", i))
+			}
 		}
 	}
 
 	// Deposits
-	if len(block.body.deposits) > MAX_DEPOSITS {
-		return errors.New("too many deposits")
-	}
-	for i, dep := range block.body.deposits {
-		if dep.index != state.deposit_index {
-			return errors.New(fmt.Sprintf("deposit %d has index %d that does not match with state index %d", i, dep.index, state.deposit_index))
+	{
+		if len(block.body.deposits) > MAX_DEPOSITS {
+			return errors.New("too many deposits")
 		}
-		// Let serialized_deposit_data be the serialized form of deposit.deposit_data.
-		// It should be 8 bytes for deposit_data.amount
-		//  followed by 8 bytes for deposit_data.timestamp
-		//  and then the DepositInput bytes.
-		// That is, it should match deposit_data in the Ethereum 1.0 deposit contract
-		//  of which the hash was placed into the Merkle tree.
-		dep_input_bytes := ssz_encode(dep.deposit_data.deposit_input)
-		serialized_deposit_data := make([]byte, 8 + 8 + len(dep_input_bytes), 8 + 8 + len(dep_input_bytes))
-		binary.LittleEndian.PutUint64(serialized_deposit_data[0:8], uint64(dep.deposit_data.amount))
-		binary.LittleEndian.PutUint64(serialized_deposit_data[8:16], uint64(dep.deposit_data.timestamp))
-		copy(serialized_deposit_data[16:], dep_input_bytes)
+		for i, dep := range block.body.deposits {
+			if dep.index != state.deposit_index {
+				return errors.New(fmt.Sprintf("deposit %d has index %d that does not match with state index %d", i, dep.index, state.deposit_index))
+			}
+			// Let serialized_deposit_data be the serialized form of deposit.deposit_data.
+			// It should be 8 bytes for deposit_data.amount
+			//  followed by 8 bytes for deposit_data.timestamp
+			//  and then the DepositInput bytes.
+			// That is, it should match deposit_data in the Ethereum 1.0 deposit contract
+			//  of which the hash was placed into the Merkle tree.
+			dep_input_bytes := ssz_encode(dep.deposit_data.deposit_input)
+			serialized_deposit_data := make([]byte, 8+8+len(dep_input_bytes), 8+8+len(dep_input_bytes))
+			binary.LittleEndian.PutUint64(serialized_deposit_data[0:8], uint64(dep.deposit_data.amount))
+			binary.LittleEndian.PutUint64(serialized_deposit_data[8:16], uint64(dep.deposit_data.timestamp))
+			copy(serialized_deposit_data[16:], dep_input_bytes)
 
-		// verify the deposit
-		if !verify_merkle_branch(hash(serialized_deposit_data), dep.branch, DEPOSIT_CONTRACT_TREE_DEPTH,
-			uint64(dep.index), state.latest_eth1_data.deposit_root) {
-			return errors.New(fmt.Sprintf("deposit %d has merkle proof that failed to be verified", i))
+			// verify the deposit
+			if !verify_merkle_branch(hash(serialized_deposit_data), dep.branch, DEPOSIT_CONTRACT_TREE_DEPTH,
+				uint64(dep.index), state.latest_eth1_data.deposit_root) {
+				return errors.New(fmt.Sprintf("deposit %d has merkle proof that failed to be verified", i))
+			}
+			process_deposit(state, &dep)
+			state.deposit_index += 1
 		}
-		process_deposit(state, &dep)
-		state.deposit_index += 1
 	}
 
 	// Voluntary exits
-	if len(block.body.voluntary_exits) > MAX_VOLUNTARY_EXITS {
-		return errors.New("too many voluntary exits")
-	}
-	for i, exit := range block.body.voluntary_exits {
-		validator := state.validator_registry[exit.validator_index]
-		if !(validator.exit_epoch > get_delayed_activation_exit_epoch(state.Epoch()) &&
-			state.Epoch() > exit.epoch &&
-			bls_verify(validator.pubkey, signed_root(exit, "signature"),
-				exit.signature, get_domain(state.fork, exit.epoch, DOMAIN_EXIT))) {
-			return errors.New(fmt.Sprintf("voluntary exit %d could not be verified", i))
+	{
+		if len(block.body.voluntary_exits) > MAX_VOLUNTARY_EXITS {
+			return errors.New("too many voluntary exits")
 		}
-		initiate_validator_exit(state, exit.validator_index)
+		for i, exit := range block.body.voluntary_exits {
+			validator := state.validator_registry[exit.validator_index]
+			if !(validator.exit_epoch > get_delayed_activation_exit_epoch(state.Epoch()) &&
+				state.Epoch() > exit.epoch &&
+				bls_verify(validator.pubkey, signed_root(exit, "signature"),
+					exit.signature, get_domain(state.fork, exit.epoch, DOMAIN_EXIT))) {
+				return errors.New(fmt.Sprintf("voluntary exit %d could not be verified", i))
+			}
+			initiate_validator_exit(state, exit.validator_index)
+		}
 	}
 
 	// Transfers
-	if len(block.body.transfers) > MAX_TRANSFERS {
-		return errors.New("too many transfers")
-	}
-	// check if all TXs are distinct
-	distinctionCheckSet := make(map[BLSSignature]uint64)
-	for i, v := range block.body.transfers {
-		if existing, ok := distinctionCheckSet[v.signature]; ok {
-			return errors.New(fmt.Sprintf("transfer %d is the same as transfer %d, aborting", i, existing))
+	{
+		if len(block.body.transfers) > MAX_TRANSFERS {
+			return errors.New("too many transfers")
 		}
-		distinctionCheckSet[v.signature] = uint64(i)
-	}
+		// check if all TXs are distinct
+		distinctionCheckSet := make(map[BLSSignature]uint64)
+		for i, v := range block.body.transfers {
+			if existing, ok := distinctionCheckSet[v.signature]; ok {
+				return errors.New(fmt.Sprintf("transfer %d is the same as transfer %d, aborting", i, existing))
+			}
+			distinctionCheckSet[v.signature] = uint64(i)
+		}
 
-	for i, transfer := range block.body.transfers {
-		withdrawCred := Bytes32{}
-		withdrawCred[31] = BLS_WITHDRAWAL_PREFIX_BYTE
-		copy(withdrawCred[1:], hash(transfer.pubkey)[1:])
-		// verify transfer data + signature. No separate error messages for line limit challenge...
-		if !(
-			state.validator_balances[transfer.from] >= transfer.amount &&
-			state.validator_balances[transfer.from] >= transfer.fee &&
-			((state.validator_balances[transfer.from] == transfer.amount + transfer.fee) ||
-				(state.validator_balances[transfer.from] >= transfer.amount + transfer.fee + MIN_DEPOSIT_AMOUNT)) &&
-			state.slot == transfer.slot &&
-			(state.Epoch() >= state.validator_registry[transfer.from].withdrawable_epoch || state.validator_registry[transfer.from].activation_epoch == FAR_FUTURE_EPOCH) &&
-			state.validator_registry[transfer.from].withdrawal_credentials == withdrawCred &&
-			bls_verify(transfer.pubkey, signed_root(transfer, "signature"), transfer.signature, get_domain(state.fork, transfer.slot.ToEpoch(), DOMAIN_TRANSFER))) {
-			return errors.New(fmt.Sprintf("transfer %d is invalid", i))
+		for i, transfer := range block.body.transfers {
+			withdrawCred := Bytes32{}
+			withdrawCred[31] = BLS_WITHDRAWAL_PREFIX_BYTE
+			copy(withdrawCred[1:], hash(transfer.pubkey)[1:])
+			// verify transfer data + signature. No separate error messages for line limit challenge...
+			if !(
+				state.validator_balances[transfer.from] >= transfer.amount &&
+					state.validator_balances[transfer.from] >= transfer.fee &&
+					((state.validator_balances[transfer.from] == transfer.amount+transfer.fee) ||
+						(state.validator_balances[transfer.from] >= transfer.amount+transfer.fee+MIN_DEPOSIT_AMOUNT)) &&
+					state.slot == transfer.slot &&
+					(state.Epoch() >= state.validator_registry[transfer.from].withdrawable_epoch || state.validator_registry[transfer.from].activation_epoch == FAR_FUTURE_EPOCH) &&
+					state.validator_registry[transfer.from].withdrawal_credentials == withdrawCred &&
+					bls_verify(transfer.pubkey, signed_root(transfer, "signature"), transfer.signature, get_domain(state.fork, transfer.slot.ToEpoch(), DOMAIN_TRANSFER))) {
+				return errors.New(fmt.Sprintf("transfer %d is invalid", i))
+			}
+			state.validator_balances[transfer.from] -= transfer.amount + transfer.fee
+			state.validator_balances[transfer.to] += transfer.amount
+			state.validator_balances[get_beacon_proposer_index(state, state.slot)] += transfer.fee
 		}
-		state.validator_balances[transfer.from] -= transfer.amount + transfer.fee
-		state.validator_balances[transfer.to] += transfer.amount
-		state.validator_balances[get_beacon_proposer_index(state, state.slot)] += transfer.fee
 	}
 
 	// END ------------------------------
@@ -313,19 +333,20 @@ func EpochTransition(state *BeaconState) {
 	// TODO more helper stuff
 
 	// Eth1 Data
-	if next_epoch % EPOCHS_PER_ETH1_VOTING_PERIOD == 0 {
-		// look for a majority vote
-		for _, data_vote := range state.eth1_data_votes {
-			if data_vote.vote_count * 2 > uint64(EPOCHS_PER_ETH1_VOTING_PERIOD) * uint64(SLOTS_PER_EPOCH) {
-				// more than half the votes in this voting period were for this data_vote value
-				state.latest_eth1_data = data_vote.eth1_data
-				break
+	{
+		if next_epoch%EPOCHS_PER_ETH1_VOTING_PERIOD == 0 {
+			// look for a majority vote
+			for _, data_vote := range state.eth1_data_votes {
+				if data_vote.vote_count*2 > uint64(EPOCHS_PER_ETH1_VOTING_PERIOD)*uint64(SLOTS_PER_EPOCH) {
+					// more than half the votes in this voting period were for this data_vote value
+					state.latest_eth1_data = data_vote.eth1_data
+					break
+				}
 			}
+			// reset votes
+			state.eth1_data_votes = make([]Eth1DataVote, 0)
 		}
-		// reset votes
-		state.eth1_data_votes = make([]Eth1DataVote, 0)
 	}
-
 
 	// Justification and finalization
 	{
@@ -482,6 +503,7 @@ func get_crosslink_committees_at_slot(state *BeaconState, slot Slot, registryCha
         for i in range(committees_per_slot)
     ]
 	 */
+	 return []CrosslinkCommittee{}
 }
 
 // Return the block root at a recent slot.
