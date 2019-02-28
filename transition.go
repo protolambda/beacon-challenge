@@ -9,6 +9,9 @@ import (
 
 // interface required by Justin Drake for challenge.
 func StateTransition(preState *BeaconState, block *BeaconBlock) (res *BeaconState, err error) {
+	if preState.slot >= block.slot {
+		return nil, errors.New("cannot handle block on top of pre-state with equal or higher slot than block")
+	}
 	// We work on a copy of the input state. If the block is invalid, or input is re-used, we don't have to care.
 	state := preState.Copy()
 	// happens at the start of every slot
