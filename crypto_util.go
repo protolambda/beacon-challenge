@@ -27,8 +27,7 @@ func hash(input interface{}) Bytes32 {
 	return Bytes32{}
 }
 
-func xorBytes32(a Bytes32, b Bytes32) Bytes32 {
-	out := Bytes32{}
+func xorBytes32(a Bytes32, b Bytes32) (out Bytes32) {
 	for i := 0; i < 32; i++ {
 		out[i] = a[i] ^ b[i]
 	}

@@ -85,6 +85,9 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			return errors.New("too many proposer slashings")
 		}
 		for i, proposer_slashing := range block.body.proposer_slashings {
+			if err := check_validator_index(state, proposer_slashing.proposer_index); err != nil {
+				return err
+			}
 			proposer := state.validator_registry[proposer_slashing.proposer_index]
 			if !(proposer_slashing.proposal_1.slot == proposer_slashing.proposal_2.slot &&
 				proposer_slashing.proposal_1.shard == proposer_slashing.proposal_2.shard &&
@@ -120,8 +123,9 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			slashedAny := false
 			// run slashings where applicable
 		ValLoop:
+			// indices are trusted, they have been verified by verify_slashable_attestation(...)
 			for _, v1 := range slashable_attestation_1.validator_indices {
-				for _, v2 := range slashable_attestation_1.validator_indices {
+				for _, v2 := range slashable_attestation_2.validator_indices {
 					if v1 == v2 && !state.validator_registry[v1].slashed {
 						if err := slash_validator(state, v1); err != nil {
 							return err
@@ -813,18 +817,11 @@ func get_active_validator_indices(validator_registry []Validator, epoch Epoch) [
 
 // Return the effective balance (also known as "balance at stake") for a validator with the given index.
 func get_effective_balance(state *BeaconState, index ValidatorIndex) Gwei {
-	// TODO: should there be a range check?
-	b := state.validator_balances[index]
-	if b > MAX_DEPOSIT_AMOUNT {
-		return MAX_DEPOSIT_AMOUNT
-	} else {
-		return b
-	}
+	return Max(state.validator_balances[index], MAX_DEPOSIT_AMOUNT)
 }
 
 // Return the combined effective balance of an array of validators.
-func get_total_balance(state *BeaconState, indices []ValidatorIndex) Gwei {
-	sum := Gwei(0)
+func get_total_balance(state *BeaconState, indices []ValidatorIndex) (sum Gwei) {
 	for _, vIndex := range indices {
 		sum += get_effective_balance(state, vIndex)
 	}
@@ -917,6 +914,8 @@ func get_block_root(state *BeaconState, slot Slot) (Root, error) {
 // Verify validity of slashable_attestation fields.
 func verify_slashable_attestation(state *BeaconState, attestation *SlashableAttestation) bool {
 	// TODO
+
+	// TODO verify indices explicitly with check_validator_index
 	return false
 }
 
@@ -932,6 +931,13 @@ func is_surround_vote(a *AttestationData, b *AttestationData) bool {
 	targetA := a.slot.ToEpoch()
 	targetB := b.slot.ToEpoch()
 	return sourceA < sourceB && targetB < targetA
+}
+
+func check_validator_index(state *BeaconState, index ValidatorIndex) error {
+	if index > ValidatorIndex(len(state.validator_registry)) {
+		return errors.New("validator index is unknown, too high")
+	}
+	return nil
 }
 
 // Slash the validator with index index.
