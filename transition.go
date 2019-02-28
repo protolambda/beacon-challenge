@@ -350,6 +350,7 @@ func EpochTransition(state *BeaconState) {
 
 	// Justification and finalization
 	{
+		// TODO
 		previous_epoch_boundary_attesting_balance := Gwei(0)
 		current_epoch_boundary_attesting_balance := Gwei(0)
 		previous_total_balance := Gwei(0)
@@ -385,6 +386,50 @@ func EpochTransition(state *BeaconState) {
 	}
 
 	// Crosslinks
+	{
+
+		start := previous_epoch.GetStartSlot()
+		end := next_epoch.GetStartSlot()
+		for slot := start; slot < end; slot++ {
+			crosslink_committees_at_slot := get_crosslink_committees_at_slot(state, slot, false)
+			for _, cross_comm := range crosslink_committees_at_slot {
+
+				// The spec is insane in making everything a helper function, ignoring scope/encapsulation, and not being to-the-point.
+				// All we need is to determine a crosslink root,
+				//  "winning_root" (from all attestations in previous or current epoch),
+				//  and keep track of its weight.
+				crosslink_data_root := state.latest_crosslinks[cross_comm.Shard].crosslink_data_root
+
+				// First look at all attestations, and sum the weights per root.
+				weightedCrosslinks := make(map[Root]Gwei)
+				for _, att := range state.latest_attestations {
+					if ep := att.data.slot.ToEpoch();
+						ep == previous_epoch || ep == current_epoch &&
+						att.data.shard == cross_comm.Shard &&
+						att.data.crosslink_data_root == crosslink_data_root {
+						for _, participant := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+							weightedCrosslinks[att.data.crosslink_data_root] += get_effective_balance(state, participant)
+						}
+					}
+				}
+				// Now determine the best root, by weight
+				var winning_root Root
+				winning_weight := Gwei(0)
+				for root, weight := range weightedCrosslinks {
+					if weight > winning_weight {
+						winning_root = root
+					}
+				}
+
+				// If it has sufficient weight, the crosslink is accepted.
+				if 3 * winning_weight >= 2 * get_total_balance(state, cross_comm.Committee) {
+					state.latest_crosslinks[cross_comm.Shard] = Crosslink{
+						epoch:               slot.ToEpoch(),
+						crosslink_data_root: winning_root}
+				}
+			}
+		}
+	}
 
 	// Rewards & Penalties
 
@@ -421,6 +466,24 @@ func EpochTransition(state *BeaconState) {
 		}
 		state.latest_attestations = attests
 	}
+}
+
+func get_effective_balance(state *BeaconState, index ValidatorIndex) Gwei {
+	// TODO: should there be a range check?
+	b := state.validator_balances[index]
+	if b > MAX_DEPOSIT_AMOUNT {
+		return MAX_DEPOSIT_AMOUNT
+	} else {
+		return b
+	}
+}
+
+func get_total_balance(state *BeaconState, indices []ValidatorIndex) Gwei {
+	sum := Gwei(0)
+	for _, vIndex := range indices {
+		sum += get_effective_balance(state, vIndex)
+	}
+	return sum
 }
 
 func initiate_validator_exit(state *BeaconState, index ValidatorIndex) {
