@@ -385,6 +385,13 @@ func EpochTransition(state *BeaconState) {
 		state.justified_epoch = new_justified_epoch
 	}
 
+	// All recent winning crosslinks, regardless of weight.
+	winning_roots := make(map[Shard]Root)
+	// Remember the attesters of each winning crosslink root (1 per shard)
+	// Also includes non-persisted winners (i.e. winning attesters not bigger than 2/3 of total committee weight)
+	crosslink_winners := make(map[Root]ValidatorIndexSet)
+	crosslink_winners_weight := make(map[Root]Gwei)
+
 	// Crosslinks
 	{
 
@@ -419,7 +426,20 @@ func EpochTransition(state *BeaconState) {
 					if weight > winning_weight {
 						winning_root = root
 					}
+					if weight == winning_weight {
+						// break tie lexicographically
+						for i := 0; i < 32; i++ {
+							if root[i] > winning_root[i] {
+								winning_root = root
+								break
+							}
+						}
+					}
 				}
+				// TODO remember attesters of winning root
+				crosslink_winners[winning_root] = ValidatorIndexSet{}
+				winning_roots[cross_comm.Shard] = winning_root
+				crosslink_winners_weight[winning_root] = winning_weight
 
 				// If it has sufficient weight, the crosslink is accepted.
 				if 3 * winning_weight >= 2 * get_total_balance(state, cross_comm.Committee) {
@@ -435,7 +455,7 @@ func EpochTransition(state *BeaconState) {
 	{
 		// Note: Rewards and penalties are for participation in the previous epoch,
 		//  so the "active validator" set is drawn from get_active calls on previous_epoch
-		active_validator_indices := ValidatorIndexSet(get_active_validator_indices(state.validator_registry, previous_epoch))
+		previous_active_validator_indices := ValidatorIndexSet(get_active_validator_indices(state.validator_registry, previous_epoch))
 
 		// TODO: helper sets (order is not important)
 		previous_epoch_attester_indices := ValidatorIndexSet([]ValidatorIndex{})
@@ -492,13 +512,13 @@ func EpochTransition(state *BeaconState) {
 				// Slash validators that were supposed to be active, but did not do their work
 				{
 					//Justification-non-participation R-penalty
-					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_attester_indices), false, base_reward)
+					applyRewardOrSlash(previous_active_validator_indices.Minus(previous_epoch_attester_indices), false, base_reward)
 
 					//Boundary-attestation-non-participation R-penalty
-					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_boundary_attester_indices), false, base_reward)
+					applyRewardOrSlash(previous_active_validator_indices.Minus(previous_epoch_boundary_attester_indices), false, base_reward)
 
 					//Non-canonical-participation R-penalty
-					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_head_attester_indices), false, base_reward)
+					applyRewardOrSlash(previous_active_validator_indices.Minus(previous_epoch_head_attester_indices), false, base_reward)
 				}
 
 				// Reward active validators that do their work
@@ -525,13 +545,13 @@ func EpochTransition(state *BeaconState) {
 				// Slash validators that were supposed to be active, but did not do their work
 				{
 					// Justification-inactivity penalty
-					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_attester_indices), false, inactivity_penalty)
+					applyRewardOrSlash(previous_active_validator_indices.Minus(previous_epoch_attester_indices), false, inactivity_penalty)
 					// Boundary-attestation-Inactivity penalty
-					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_boundary_attester_indices), false, inactivity_penalty)
+					applyRewardOrSlash(previous_active_validator_indices.Minus(previous_epoch_boundary_attester_indices), false, inactivity_penalty)
 					// Non-canonical-participation R-penalty
-					applyRewardOrSlash(active_validator_indices.Minus(previous_epoch_head_attester_indices), false, base_reward)
+					applyRewardOrSlash(previous_active_validator_indices.Minus(previous_epoch_head_attester_indices), false, base_reward)
 					// Penalization measure: double inactivity penalty + R-penalty
-					applyRewardOrSlash(active_validator_indices, false, func(index ValidatorIndex) Gwei {
+					applyRewardOrSlash(previous_active_validator_indices, false, func(index ValidatorIndex) Gwei {
 						if state.validator_registry[index].slashed {
 							return (2 * inactivity_penalty(index)) + base_reward(index)
 						} else {
@@ -553,19 +573,57 @@ func EpochTransition(state *BeaconState) {
 		// > Attestation inclusion
 		{
 			// Attestations should be included timely.
-
+			for _, attester_index := range previous_epoch_attester_indices {
+				// TODO find inclusion slot of attester's attestation
+				inclusion_slot := Slot(0)
+				proposer_index := get_beacon_proposer_index(state, inclusion_slot)
+				state.validator_balances[proposer_index] += base_reward(attester_index) / ATTESTATION_INCLUSION_REWARD_QUOTIENT
+			}
 		}
+
 		// > Crosslinks
 		{
 			// Crosslinks should be created by the committees
+			start := previous_epoch.GetStartSlot()
+			end := next_epoch.GetStartSlot()
+			for slot := start; slot < end; slot++ {
+				crosslink_committees_at_slot := get_crosslink_committees_at_slot(state, slot, false)
+				for _, cross_comm := range crosslink_committees_at_slot {
 
+					// We remembered the winning root
+					// (i.e. the most attested crosslink root, doesn't have to be 2/3 majority)
+					winning_root := winning_roots[cross_comm.Shard]
+
+					// We remembered the attesters of the crosslink
+					crosslink_attesters := crosslink_winners[winning_root]
+
+					// Note: non-committee validators still count as attesters for a crosslink,
+					//  hence the extra work to filter for just the validators in the committee
+					committee_non_participants := ValidatorIndexSet(cross_comm.Committee).Minus(crosslink_attesters)
+
+					committee_attesters_weight := crosslink_winners_weight[winning_root]
+					total_committee_weight := get_total_balance(state, cross_comm.Committee)
+
+					// Reward those that contributed to finding a winning root.
+					applyRewardOrSlash(ValidatorIndexSet(cross_comm.Committee).Minus(committee_non_participants),
+						true,  func(index ValidatorIndex) Gwei {
+						return base_reward(index) * committee_attesters_weight / total_committee_weight
+					})
+					// Slash those that opted for a different crosslink
+					applyRewardOrSlash(committee_non_participants, false, base_reward)
+				}
+			}
 		}
+
 		// > Ejections
 		{
 			// After we are done slashing, eject the validators that don't have enough balance left.
-
+			for _, vIndex := range get_active_validator_indices(state.validator_registry, current_epoch) {
+				if state.validator_balances[vIndex] < EJECTION_BALANCE {
+					exit_validator(state, vIndex)
+				}
+			}
 		}
-
 	}
 	// Validator registry and shuffling data
 
@@ -590,6 +648,10 @@ func EpochTransition(state *BeaconState) {
 		}
 		state.latest_attestations = attests
 	}
+}
+
+func exit_validator(state *BeaconState, index ValidatorIndex) {
+	// TODO
 }
 
 // The largest integer x such that x**2 is less than or equal to n.
