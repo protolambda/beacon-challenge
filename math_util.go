@@ -21,7 +21,7 @@ func integer_squareroot(n uint64) uint64 {
 	y := (x + 1) >> 1
 	for y < x {
 		x = y
-		y = (x + n / x) >> 1
+		y = (x + n/x) >> 1
 	}
 	return x
 }

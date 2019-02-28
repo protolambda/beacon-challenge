@@ -20,7 +20,7 @@ func StateTransition(preState *BeaconState, block *BeaconBlock) (res *BeaconStat
 		return nil, err
 	}
 	// "happens at the end of the last slot of every epoch "
-	if (state.slot + 1) % SLOTS_PER_EPOCH == 0 {
+	if (state.slot+1)%SLOTS_PER_EPOCH == 0 {
 		EpochTransition(state)
 	}
 	// State root verification
@@ -44,7 +44,6 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			return errors.New("block signature invalid")
 		}
 	}
-
 
 	// RANDAO
 	{
@@ -319,8 +318,8 @@ func SlotTransition(state *BeaconState) {
 	state.slot += 1
 
 	// Let previous_block_root be the hash_tree_root of the previous beacon block processed in the chain.
-	state.latest_block_roots[(state.slot - 1) % LATEST_BLOCK_ROOTS_LENGTH] = state.latest_block_roots[(state.slot - 2) % LATEST_BLOCK_ROOTS_LENGTH]
-	if state.slot % LATEST_BLOCK_ROOTS_LENGTH == 0 {
+	state.latest_block_roots[(state.slot-1)%LATEST_BLOCK_ROOTS_LENGTH] = state.latest_block_roots[(state.slot-2)%LATEST_BLOCK_ROOTS_LENGTH]
+	if state.slot%LATEST_BLOCK_ROOTS_LENGTH == 0 {
 		state.batched_block_roots = append(state.batched_block_roots, merkle_root(state.latest_block_roots))
 	}
 }
@@ -433,16 +432,16 @@ func EpochTransition(state *BeaconState) {
 			new_justified_epoch = current_epoch
 		}
 		// > Finalization
-		if (state.justification_bitfield >> 1) & 7 == 7 && state.previous_justified_epoch == previous_epoch - 2 {
+		if (state.justification_bitfield>>1)&7 == 7 && state.previous_justified_epoch == previous_epoch-2 {
 			state.finalized_epoch = state.previous_justified_epoch
 		}
-		if (state.justification_bitfield >> 1) & 3 == 3 && state.previous_justified_epoch == previous_epoch - 1 {
+		if (state.justification_bitfield>>1)&3 == 3 && state.previous_justified_epoch == previous_epoch-1 {
 			state.finalized_epoch = state.previous_justified_epoch
 		}
-		if (state.justification_bitfield >> 0) & 7 == 7 && state.justified_epoch == previous_epoch - 1 {
+		if (state.justification_bitfield>>0)&7 == 7 && state.justified_epoch == previous_epoch-1 {
 			state.finalized_epoch = state.justified_epoch
 		}
-		if (state.justification_bitfield >> 0) & 3 == 3 && state.justified_epoch == previous_epoch {
+		if (state.justification_bitfield>>0)&3 == 3 && state.justified_epoch == previous_epoch {
 			state.finalized_epoch = state.justified_epoch
 		}
 		// > Final part
@@ -477,8 +476,8 @@ func EpochTransition(state *BeaconState) {
 				for _, att := range state.latest_attestations {
 					if ep := att.data.slot.ToEpoch();
 						ep == previous_epoch || ep == current_epoch &&
-						att.data.shard == cross_comm.Shard &&
-						att.data.crosslink_data_root == crosslink_data_root {
+							att.data.shard == cross_comm.Shard &&
+							att.data.crosslink_data_root == crosslink_data_root {
 						for _, participant := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
 							weightedCrosslinks[att.data.crosslink_data_root] += get_effective_balance(state, participant)
 						}
@@ -522,7 +521,7 @@ func EpochTransition(state *BeaconState) {
 				crosslink_winners_weight[winning_root] = winning_weight
 
 				// If it has sufficient weight, the crosslink is accepted.
-				if 3 * winning_weight >= 2 * get_total_balance(state, cross_comm.Committee) {
+				if 3*winning_weight >= 2*get_total_balance(state, cross_comm.Committee) {
 					state.latest_crosslinks[cross_comm.Shard] = Crosslink{
 						epoch:               slot.ToEpoch(),
 						crosslink_data_root: winning_root}
@@ -605,15 +604,15 @@ func EpochTransition(state *BeaconState) {
 				{
 					// Justification-participation reward
 					applyRewardOrSlash(previous_epoch_attester_indices, true,
-						scaled_value(base_reward, previous_epoch_attesting_balance / previous_total_balance))
+						scaled_value(base_reward, previous_epoch_attesting_balance/previous_total_balance))
 
 					// Boundary-attestation reward
 					applyRewardOrSlash(previous_epoch_boundary_attester_indices, true,
-						scaled_value(base_reward, previous_epoch_boundary_attesting_balance / previous_total_balance))
+						scaled_value(base_reward, previous_epoch_boundary_attesting_balance/previous_total_balance))
 
 					// Canonical-participation reward
 					applyRewardOrSlash(previous_epoch_head_attester_indices, true,
-						scaled_value(base_reward, previous_epoch_head_attesting_balance / previous_total_balance))
+						scaled_value(base_reward, previous_epoch_head_attesting_balance/previous_total_balance))
 
 					// Attestation-Inclusion-delay reward: quicker = more reward
 					applyRewardOrSlash(previous_epoch_attester_indices, true,
@@ -686,9 +685,9 @@ func EpochTransition(state *BeaconState) {
 
 					// Reward those that contributed to finding a winning root.
 					applyRewardOrSlash(ValidatorIndexSet(cross_comm.Committee).Minus(committee_non_participants),
-						true,  func(index ValidatorIndex) Gwei {
-						return base_reward(index) * committee_attesters_weight / total_committee_weight
-					})
+						true, func(index ValidatorIndex) Gwei {
+							return base_reward(index) * committee_attesters_weight / total_committee_weight
+						})
 					// Slash those that opted for a different crosslink
 					applyRewardOrSlash(committee_non_participants, false, base_reward)
 				}
@@ -719,15 +718,15 @@ func EpochTransition(state *BeaconState) {
 
 			for index, validator := range state.validator_registry {
 				if validator.slashed &&
-					current_epoch == validator.withdrawable_epoch - (LATEST_SLASHED_EXIT_LENGTH / 2) {
+					current_epoch == validator.withdrawable_epoch-(LATEST_SLASHED_EXIT_LENGTH/2) {
 					epoch_index := current_epoch % LATEST_SLASHED_EXIT_LENGTH
-					total_at_start := state.latest_slashed_balances[(epoch_index + 1) % LATEST_SLASHED_EXIT_LENGTH]
+					total_at_start := state.latest_slashed_balances[(epoch_index+1)%LATEST_SLASHED_EXIT_LENGTH]
 					total_at_end := state.latest_slashed_balances[epoch_index]
 					total_penalties := total_at_end - total_at_start
 					balance := get_effective_balance(state, ValidatorIndex(index))
 					penalty := Max(
-						balance * Min(total_penalties * 3, total_balance) / total_balance,
-						balance / MIN_PENALTY_QUOTIENT)
+						balance*Min(total_penalties*3, total_balance)/total_balance,
+						balance/MIN_PENALTY_QUOTIENT)
 					state.validator_balances[index] -= penalty
 				}
 			}
@@ -738,7 +737,7 @@ func EpochTransition(state *BeaconState) {
 			eligible_indices := make(ValidatorIndexSet, 0)
 			for index, validator := range state.validator_registry {
 				if validator.withdrawable_epoch != FAR_FUTURE_EPOCH &&
-					current_epoch > validator.exit_epoch + MIN_VALIDATOR_WITHDRAWABILITY_DELAY {
+					current_epoch > validator.exit_epoch+MIN_VALIDATOR_WITHDRAWABILITY_DELAY {
 					eligible_indices = append(eligible_indices, ValidatorIndex(index))
 				}
 			}
@@ -886,7 +885,7 @@ func get_attestation_participants(state *BeaconState, data *AttestationData, bit
 
 type CrosslinkCommittee struct {
 	Committee []ValidatorIndex
-	Shard Shard
+	Shard     Shard
 }
 
 // Return the list of (committee, shard) tuples for the slot.
@@ -945,15 +944,15 @@ func get_crosslink_committees_at_slot(state *BeaconState, slot Slot, registryCha
         for i in range(committees_per_slot)
     ]
 	 */
-	 return []CrosslinkCommittee{}
+	return []CrosslinkCommittee{}
 }
 
 // Return the block root at a recent slot.
 func get_block_root(state *BeaconState, slot Slot) (Root, error) {
-	if !(state.slot <= slot + LATEST_BLOCK_ROOTS_LENGTH && slot < state.slot) {
+	if !(state.slot <= slot+LATEST_BLOCK_ROOTS_LENGTH && slot < state.slot) {
 		return ZERO_HASH, errors.New("slot is not a recent slot, cannot find block root")
 	}
-	return state.latest_block_roots[slot % LATEST_BLOCK_ROOTS_LENGTH], nil
+	return state.latest_block_roots[slot%LATEST_BLOCK_ROOTS_LENGTH], nil
 }
 
 // Verify validity of slashable_attestation fields.
@@ -1033,7 +1032,7 @@ func slash_validator(state *BeaconState, index ValidatorIndex) error {
 		return errors.New("cannot slash validator after withdrawal epoch")
 	}
 	exit_validator(state, index)
-	state.latest_slashed_balances[state.Epoch() % LATEST_SLASHED_EXIT_LENGTH] += get_effective_balance(state, index)
+	state.latest_slashed_balances[state.Epoch()%LATEST_SLASHED_EXIT_LENGTH] += get_effective_balance(state, index)
 
 	whistleblower_index := get_beacon_proposer_index(state, state.slot)
 	whistleblower_reward := get_effective_balance(state, index) / WHISTLEBLOWER_REWARD_QUOTIENT
@@ -1046,10 +1045,10 @@ func slash_validator(state *BeaconState, index ValidatorIndex) error {
 
 //  Return the randao mix at a recent epoch
 func get_randao_mix(state *BeaconState, epoch Epoch) (Bytes32, error) {
-	if !(state.Epoch() - LATEST_RANDAO_MIXES_LENGTH < epoch && epoch <= state.Epoch()) {
+	if !(state.Epoch()-LATEST_RANDAO_MIXES_LENGTH < epoch && epoch <= state.Epoch()) {
 		return Bytes32{}, errors.New("cannot get randao mix for out-of-bounds epoch")
 	}
-	return state.latest_randao_mixes[epoch % LATEST_RANDAO_MIXES_LENGTH], nil
+	return state.latest_randao_mixes[epoch%LATEST_RANDAO_MIXES_LENGTH], nil
 }
 
 // Get the domain number that represents the fork meta and signature domain.
@@ -1057,11 +1056,11 @@ func get_domain(fork Fork, epoch Epoch, dom BlsDomain) BlsDomain {
 	// combine fork version with domain.
 	// TODO: spec is unclear about input size expectations.
 	// TODO And is "+" different than packing into 64 bits here? I.e. ((32 bits fork version << 32) | (dom 32 bits))
-	return BlsDomain(fork.GetVersion(epoch) << 32) + dom
+	return BlsDomain(fork.GetVersion(epoch)<<32) + dom
 }
 
 // Return the beacon proposer index for the slot.
 func get_beacon_proposer_index(state *BeaconState, slot Slot) ValidatorIndex {
 	first_committee_data := get_crosslink_committees_at_slot(state, slot, false)[0]
-	return first_committee_data.Committee[slot % Slot(len(first_committee_data.Committee))]
+	return first_committee_data.Committee[slot%Slot(len(first_committee_data.Committee))]
 }

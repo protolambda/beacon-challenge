@@ -65,13 +65,13 @@ func (e Epoch) GetStartSlot() Slot {
 
 // bits are indexed from right to left of internal byte array. Inside byte: also from right to left.
 type Bitfield struct {
-	Bytes []byte
+	Bytes  []byte
 	Length uint64
 }
 
 func (b Bitfield) GetBit(i uint64) byte {
 	if b.Length > i {
-		return b.Bytes[i >> 3] >> (i & 7)
+		return b.Bytes[i>>3] >> (i & 7)
 	} else {
 		panic("invalid bitfield access")
 	}
@@ -79,7 +79,7 @@ func (b Bitfield) GetBit(i uint64) byte {
 
 func (b Bitfield) SetLen(length uint64) {
 	lengthBytes := length >> 3
-	if length & 7 == 0 {
+	if length&7 == 0 {
 		lengthBytes++
 	}
 	if b.Length <= length {
@@ -108,12 +108,12 @@ func (b Bitfield) SetBit(i uint64, bit byte) {
 	if b.Length <= i {
 		b.SetLen(i + 1)
 	}
-	b.Bytes[i >> 3] |= bit << (i & 7)
+	b.Bytes[i>>3] |= bit << (i & 7)
 }
 
 func (b Bitfield) IsZero() bool {
 	lengthBytes := b.Length >> 3
-	if b.Length & 7 == 0 {
+	if b.Length&7 == 0 {
 		lengthBytes++
 	}
 	for i := uint64(0); i < lengthBytes; i++ {

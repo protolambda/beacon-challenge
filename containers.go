@@ -1,28 +1,26 @@
 package beacon_challenge
 
 type BeaconBlock struct {
-
 	// Header
-	slot Slot
-	parent_root Root
-	state_root Root
+	slot          Slot
+	parent_root   Root
+	state_root    Root
 	randao_reveal [96]byte
-	eth1_data Eth1Data
+	eth1_data     Eth1Data
 
 	// Body
 	body BeaconBlockBody
 	// Signature
 	signature BLSSignature
-
 }
 
 type BeaconBlockBody struct {
 	proposer_slashings []ProposerSlashing
 	attester_slashings []AttesterSlashing
-	attestations []Attestation
-	deposits []Deposit
-	voluntary_exits []VoluntaryExit
-	transfers []Transfer
+	attestations       []Attestation
+	deposits           []Deposit
+	voluntary_exits    []VoluntaryExit
+	transfers          []Transfer
 }
 
 type ProposerSlashing struct {
@@ -162,42 +160,42 @@ type Transfer struct {
 
 type BeaconState struct {
 	// Misc
-	slot Slot
+	slot         Slot
 	genesis_time Timestamp
-	fork Fork  // For versioning hard forks
+	fork         Fork // For versioning hard forks
 
 	// Validator registry
-	validator_registry []Validator
-	validator_balances []Gwei
+	validator_registry              []Validator
+	validator_balances              []Gwei
 	validator_registry_update_epoch Epoch
 
 	// Randomness and committees
-	latest_randao_mixes []Bytes32
+	latest_randao_mixes            []Bytes32
 	previous_shuffling_start_shard Shard
-	current_shuffling_start_shard Shard
-	previous_shuffling_epoch Epoch
-	current_shuffling_epoch Epoch
-	previous_shuffling_seed Bytes32
-	current_shuffling_seed Bytes32
+	current_shuffling_start_shard  Shard
+	previous_shuffling_epoch       Epoch
+	current_shuffling_epoch        Epoch
+	previous_shuffling_seed        Bytes32
+	current_shuffling_seed         Bytes32
 
 	// Finality
 	previous_justified_epoch Epoch
-	justified_epoch Epoch
-	justification_bitfield uint64
-	finalized_epoch Epoch
+	justified_epoch          Epoch
+	justification_bitfield   uint64
+	finalized_epoch          Epoch
 
 	// Recent state
-	latest_crosslinks []Crosslink
-	latest_block_roots []Root
+	latest_crosslinks         []Crosslink
+	latest_block_roots        []Root
 	latest_active_index_roots []Root
-	latest_slashed_balances []Gwei  // Balances slashed at every withdrawal period
-	latest_attestations []PendingAttestation
-	batched_block_roots []Root
+	latest_slashed_balances   []Gwei // Balances slashed at every withdrawal period
+	latest_attestations       []PendingAttestation
+	batched_block_roots       []Root
 
 	// Ethereum 1.0 chain data
 	latest_eth1_data Eth1Data
-	eth1_data_votes []Eth1DataVote
-	deposit_index DepositIndex
+	eth1_data_votes  []Eth1DataVote
+	deposit_index    DepositIndex
 }
 
 // Make a deep copy of the state object
@@ -302,4 +300,3 @@ type Eth1DataVote struct {
 	// Vote count
 	vote_count uint64
 }
-

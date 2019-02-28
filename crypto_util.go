@@ -49,7 +49,7 @@ func verify_merkle_branch(leaf Bytes32, branch []Root, depth uint64, index uint6
 	value := leaf
 	buf := make([]byte, 64, 64)
 	for i := uint64(0); i < depth; i++ {
-		if (index >> i) & 1 == 1 {
+		if (index>>i)&1 == 1 {
 			copy(buf[:32], branch[i][:])
 			copy(buf[32:], value[:])
 		} else {
