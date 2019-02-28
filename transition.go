@@ -313,10 +313,55 @@ func EpochTransition(state *BeaconState) {
 	// TODO more helper stuff
 
 	// Eth1 Data
+	if next_epoch % EPOCHS_PER_ETH1_VOTING_PERIOD == 0 {
+		// look for a majority vote
+		for _, data_vote := range state.eth1_data_votes {
+			if data_vote.vote_count * 2 > uint64(EPOCHS_PER_ETH1_VOTING_PERIOD) * uint64(SLOTS_PER_EPOCH) {
+				// more than half the votes in this voting period were for this data_vote value
+				state.latest_eth1_data = data_vote.eth1_data
+				break
+			}
+		}
+		// reset votes
+		state.eth1_data_votes = make([]Eth1DataVote, 0)
+	}
+
 
 	// Justification and finalization
-	// > Justification
-	// > Finalization
+	{
+		previous_epoch_boundary_attesting_balance := Gwei(0)
+		current_epoch_boundary_attesting_balance := Gwei(0)
+		previous_total_balance := Gwei(0)
+		current_total_balance := Gwei(0)
+
+		// > Justification
+		new_justified_epoch := state.justified_epoch
+		state.justification_bitfield = state.justification_bitfield << 1
+		if 3*previous_epoch_boundary_attesting_balance >= 2*previous_total_balance {
+			state.justification_bitfield |= 2
+			new_justified_epoch = previous_epoch
+		}
+		if 3*current_epoch_boundary_attesting_balance >= 2*current_total_balance {
+			state.justification_bitfield |= 1
+			new_justified_epoch = current_epoch
+		}
+		// > Finalization
+		if (state.justification_bitfield >> 1) & 7 == 7 && state.previous_justified_epoch == previous_epoch - 2 {
+			state.finalized_epoch = state.previous_justified_epoch
+		}
+		if (state.justification_bitfield >> 1) & 3 == 3 && state.previous_justified_epoch == previous_epoch - 1 {
+			state.finalized_epoch = state.previous_justified_epoch
+		}
+		if (state.justification_bitfield >> 0) & 7 == 7 && state.justified_epoch == previous_epoch - 1 {
+			state.finalized_epoch = state.justified_epoch
+		}
+		if (state.justification_bitfield >> 0) & 3 == 3 && state.justified_epoch == previous_epoch {
+			state.finalized_epoch = state.justified_epoch
+		}
+		// > Final part
+		state.previous_justified_epoch = state.justified_epoch
+		state.justified_epoch = new_justified_epoch
+	}
 
 	// Crosslinks
 
@@ -341,18 +386,20 @@ func EpochTransition(state *BeaconState) {
 	// > process exit queue
 
 	// > final updates
-	state.latest_active_index_roots[(next_epoch + ACTIVATION_EXIT_DELAY) % LATEST_ACTIVE_INDEX_ROOTS_LENGTH] = hash_tree_root(get_active_validator_indices(state.validator_registry, next_epoch + ACTIVATION_EXIT_DELAY))
-	state.latest_slashed_balances[next_epoch % LATEST_SLASHED_EXIT_LENGTH] = state.latest_slashed_balances[current_epoch % LATEST_SLASHED_EXIT_LENGTH]
-	state.latest_randao_mixes[next_epoch % LATEST_RANDAO_MIXES_LENGTH] = get_randao_mix(state, current_epoch)
-	// Remove any attestation in state.latest_attestations such that slot_to_epoch(attestation.data.slot) < current_epoch
-	// TODO: could be more efficient: no need to re-allocate a list, it can be in-place (but less readable)
-	attests := make([]PendingAttestation, 0)
-	for _, a := range state.latest_attestations {
-		if a.data.slot.ToEpoch() < current_epoch {
-			attests = append(attests, a)
+	{
+		state.latest_active_index_roots[(next_epoch+ACTIVATION_EXIT_DELAY)%LATEST_ACTIVE_INDEX_ROOTS_LENGTH] = hash_tree_root(get_active_validator_indices(state.validator_registry, next_epoch+ACTIVATION_EXIT_DELAY))
+		state.latest_slashed_balances[next_epoch%LATEST_SLASHED_EXIT_LENGTH] = state.latest_slashed_balances[current_epoch%LATEST_SLASHED_EXIT_LENGTH]
+		state.latest_randao_mixes[next_epoch%LATEST_RANDAO_MIXES_LENGTH] = get_randao_mix(state, current_epoch)
+		// Remove any attestation in state.latest_attestations such that slot_to_epoch(attestation.data.slot) < current_epoch
+		// TODO: could be more efficient: no need to re-allocate a list, it can be in-place (but less readable)
+		attests := make([]PendingAttestation, 0)
+		for _, a := range state.latest_attestations {
+			if a.data.slot.ToEpoch() < current_epoch {
+				attests = append(attests, a)
+			}
 		}
+		state.latest_attestations = attests
 	}
-	state.latest_attestations = attests
 }
 
 func initiate_validator_exit(state *BeaconState, index ValidatorIndex) {
