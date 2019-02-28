@@ -240,7 +240,7 @@ type Validator struct {
 	// BLS public key
 	pubkey BLSPubkey
 	// Withdrawal credentials
-	withdrawal_credentials Bytes32
+	withdrawal_credentials Root
 	// Epoch when validator activated
 	activation_epoch Epoch
 	// Epoch when validator exited

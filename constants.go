@@ -68,3 +68,9 @@ const DOMAIN_PROPOSAL BlsDomain = 2
 const DOMAIN_EXIT BlsDomain = 3
 const DOMAIN_RANDAO BlsDomain = 4
 const DOMAIN_TRANSFER BlsDomain = 5
+
+
+// Custom constants for internal usage, no need to standardize
+
+// An impossible validator index used to mark special internal cases. (all 1s binary)
+const ValidatorIndexMarker = ValidatorIndex(^uint64(0))

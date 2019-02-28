@@ -21,28 +21,28 @@ type ValueFunction func(index ValidatorIndex) Gwei
 type ValidatorIndexSet []ValidatorIndex
 
 // returns a copy without the given indices
-func (vs ValidatorIndexSet) Minus(removed ValidatorIndexSet) ValidatorIndexSet {
+func (vs *ValidatorIndexSet) Minus(removed ValidatorIndexSet) ValidatorIndexSet {
 	res := vs.Copy()
 	res.RemoveAll(removed)
 	return res
 }
 
-func (vs ValidatorIndexSet) RemoveAll(removed ValidatorIndexSet) {
-	for i, a := range vs {
+func (vs *ValidatorIndexSet) RemoveAll(removed ValidatorIndexSet) {
+	for i, a := range *vs {
 		for _, b := range removed {
 			if a == b {
-				vs[i] = ValidatorIndex(0xffFFffFF)
+				(*vs)[i] = ValidatorIndexMarker
 				break
 			}
 		}
 	}
 	// remove all marked indices
-	for i := 0; i < len(vs); {
-		if vs[i] == 0xffFFffFF {
+	for i := 0; i < len(*vs); {
+		if (*vs)[i] == ValidatorIndexMarker {
 			// replace with last, and cut out last
-			last := len(vs) - 1
-			vs[i] = vs[last]
-			vs = vs[:last]
+			last := len(*vs) - 1
+			(*vs)[i] = (*vs)[last]
+			*vs = (*vs)[:last]
 		} else {
 			i++
 		}

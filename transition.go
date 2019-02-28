@@ -166,8 +166,12 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			// Verify bitfields and aggregate signature
 
 			// phase 0 only:
-			if !(attestation.custody_bitfield.IsZero() && attestation.aggregation_bitfield.IsZero()) {
-				return errors.New(fmt.Sprintf("attestation %d has non-zero bitfields, illegal in phase 0", i))
+			if !attestation.custody_bitfield.IsZero() {
+				return errors.New(fmt.Sprintf("attestation %d has non-zero custody bitfield, illegal in phase 0", i))
+			}
+
+			if attestation.aggregation_bitfield.IsZero() {
+				return errors.New(fmt.Sprintf("attestation %d has zeroed aggregation bitfield, not valid", i))
 			}
 
 			crosslink_committees := get_crosslink_committees_at_slot(state, attestation.data.slot, false)
@@ -251,7 +255,9 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 				uint64(dep.index), state.latest_eth1_data.deposit_root) {
 				return errors.New(fmt.Sprintf("deposit %d has merkle proof that failed to be verified", i))
 			}
-			process_deposit(state, &dep)
+			if err := process_deposit(state, &dep); err != nil {
+				return err
+			}
 			state.deposit_index += 1
 		}
 	}
@@ -288,7 +294,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 		}
 
 		for i, transfer := range block.body.transfers {
-			withdrawCred := Bytes32{}
+			withdrawCred := Root{}
 			withdrawCred[31] = BLS_WITHDRAWAL_PREFIX_BYTE
 			copy(withdrawCred[1:], hash(transfer.pubkey)[1:])
 			// verify transfer data + signature. No separate error messages for line limit challenge...
@@ -828,58 +834,63 @@ func get_total_balance(state *BeaconState, indices []ValidatorIndex) (sum Gwei) 
 }
 
 // Process a deposit from Ethereum 1.0.
-func process_deposit(state *BeaconState, dep *Deposit) {
-	// TODO
-	/*
-	deposit_input = deposit.deposit_data.deposit_input
+func process_deposit(state *BeaconState, dep *Deposit) error {
+	deposit_input := &dep.deposit_data.deposit_input
 
-    proof_is_valid = bls_verify(
-        pubkey=deposit_input.pubkey,
-        message_hash=signed_root(deposit_input, "proof_of_possession"),
-        signature=deposit_input.proof_of_possession,
-        domain=get_domain(
-            state.fork,
-            get_current_epoch(state),
-            DOMAIN_DEPOSIT,
-        )
-    )
+	proof_is_valid := bls_verify(
+		deposit_input.pubkey,
+		signed_root(deposit_input, "proof_of_possession"),
+		deposit_input.proof_of_possession,
+		get_domain(
+			state.fork,
+			state.Epoch(),
+			DOMAIN_DEPOSIT))
 
-    if not proof_is_valid:
-        return
+	if !proof_is_valid {
+		// simply don't handle the deposit. (TODO: should this be an error (making block invalid)?)
+		return nil
+	}
 
-    validator_pubkeys = [v.pubkey for v in state.validator_registry]
-    pubkey = deposit_input.pubkey
-    amount = deposit.deposit_data.amount
-    withdrawal_credentials = deposit_input.withdrawal_credentials
+	val_index := ValidatorIndexMarker
+	for i, v := range state.validator_registry {
+		if v.pubkey == deposit_input.pubkey {
+			val_index = ValidatorIndex(i)
+			break
+		}
+	}
+	amount := dep.deposit_data.amount
+	withdrawal_credentials := deposit_input.withdrawal_credentials
 
-    if pubkey not in validator_pubkeys:
-        # Add new validator
-        validator = Validator(
-            pubkey=pubkey,
-            withdrawal_credentials=withdrawal_credentials,
-            activation_epoch=FAR_FUTURE_EPOCH,
-            exit_epoch=FAR_FUTURE_EPOCH,
-            withdrawable_epoch=FAR_FUTURE_EPOCH,
-            initiated_exit=False,
-            slashed=False,
-        )
-
-        # Note: In phase 2 registry indices that have been withdrawn for a long time will be recycled.
-        state.validator_registry.append(validator)
-        state.validator_balances.append(amount)
-    else:
-        # Increase balance by deposit amount
-        index = validator_pubkeys.index(pubkey)
-        assert state.validator_registry[index].withdrawal_credentials == withdrawal_credentials
-
-        state.validator_balances[index] += amount
-	 */
+	// Check if it is a known validator that is depositing ("if pubkey not in validator_pubkeys")
+	if val_index == ValidatorIndexMarker {
+		// Not a known pubkey, add new validator
+		validator := Validator{
+			pubkey:                 state.validator_registry[val_index].pubkey,
+			withdrawal_credentials: withdrawal_credentials,
+			activation_epoch:       FAR_FUTURE_EPOCH,
+			exit_epoch:             FAR_FUTURE_EPOCH,
+			withdrawable_epoch:     FAR_FUTURE_EPOCH,
+			initiated_exit:         false,
+			slashed:                false,
+		}
+		// Note: In phase 2 registry indices that have been withdrawn for a long time will be recycled.
+		state.validator_registry = append(state.validator_registry, validator)
+		state.validator_balances = append(state.validator_balances, amount)
+	} else {
+		// known pubkey, check withdrawal credentials first, then increase balance.
+		if state.validator_registry[val_index].withdrawal_credentials != withdrawal_credentials {
+			return errors.New("deposit has wrong withdrawal credentials")
+		}
+		// Increase balance by deposit amount
+		state.validator_balances[val_index] += amount
+	}
+	return nil
 }
 
 func get_attestation_participants(state *BeaconState, data *AttestationData, bitfield *Bitfield) ValidatorIndexSet {
-	// TODO implement spec function, instead of shortcut
+	// TODO implement spec function
 	res := make([]ValidatorIndex, 0)
-	// Phase 0: bitfields will be 0, so output list will be empty.
+
 	return res
 }
 
