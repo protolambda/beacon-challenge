@@ -1042,7 +1042,6 @@ func get_attestation_participants(state *BeaconState, attestation_data *Attestat
 
 // Return the index root at a recent epoch
 func get_active_index_root(state *BeaconState, epoch Epoch) (Root, error) {
-	// TODO: should we propagate this error instead?
 	if !(state.Epoch()-LATEST_ACTIVE_INDEX_ROOTS_LENGTH+ACTIVATION_EXIT_DELAY < epoch && epoch <= state.Epoch()+ACTIVATION_EXIT_DELAY) {
 		return Root{}, errors.New("cannot get active index root, out of bounds")
 	}
