@@ -187,8 +187,8 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			}
 			// TODO spec is weak here: it's not very explicit about length of bitfields.
 			//  Let's just make sure they are the size of the committee
-			if attestation.aggregation_bitfield.Length == uint64(len(crosslink_committee.Committee)) ||
-				attestation.custody_bitfield.Length == uint64(len(crosslink_committee.Committee)) {
+			if !attestation.aggregation_bitfield.verifySize(uint64(len(crosslink_committee.Committee))) ||
+				!attestation.custody_bitfield.verifySize(uint64(len(crosslink_committee.Committee))) {
 				return errors.New(fmt.Sprintf("attestation %d has bitfield(s) with incorrect size", i))
 			}
 			// phase 0 only
