@@ -5,9 +5,44 @@ import (
 	"reflect"
 )
 
+// This is the WORST part of the beacon spec.
+// Reasons:
+//  - requires you to remove unwanted properties by truncating (implicitly enforcing ordered structs), instead of explicitly.
+//  - makes signing very unflexible: what if you want to ignore a field in the middle, or select just a few fields?
+//  - it could also be done by just constructing the merkle-root manually, it's a "funny" abstraction to handle signatures like this.
+//  - it enforces some form of reflection (reading field names), which is generally unwanted when writing clean programs.
+//  - use of reflection makes it hard to verify code safety.
+//
+// How to improve?
+// Introduce ssz-meta:
+//  A meta reference defines the fields that should be included (in a static way, much like now, but clean):
+//   - all fields included in default mode
+//   - some fields can be tagged to be included into *custom* modes
+// This is easy to implement in many languages:
+//  - Go: a TAG system for exactly this: enabling the writer of structs to specify preferences for encoders (e.g. specify different field name for struct -> JSON encoding)
+//  - Javascript: use prototypes well: when constructing an object, it can be done from a prototype that is changed to include this meta-data for each prototype field.
+//  - Java, few others: annotations on fields to generate an encoding method for the class during compile time, can be accessed through an interface when encoding.
+//  - Others: Specify encoding-hint interface manually: a method which tells which fields can be encoded.
+//  - Alternatively: providing the data alongside encoding, similar-ish to providing ABI data to define field types.
+//
 func signed_root(input interface{}, signType string) Root {
-	// TODO SSZ signed root
-	return Root{}
+	subRoots := make([]Bytes32, 0)
+	v := reflect.ValueOf(input)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		panic("cannot get partial root for signing, input is not a struct")
+	}
+	ignored := v.FieldByName(signType)
+	for i, fields := 0, v.NumField(); i < fields; i++ {
+		f := v.Field(i)
+		if f.Pointer() == ignored.Pointer() {
+			break
+		}
+		subRoots = append(subRoots, Bytes32(sszHashTreeRoot(f)))
+	}
+	return merkle_root(subRoots)
 }
 
 func ssz_encode(input interface{}) []byte {
