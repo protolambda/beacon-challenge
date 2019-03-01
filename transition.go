@@ -836,7 +836,7 @@ func EpochTransition(state *BeaconState) {
 	}
 }
 
-//  Activate the validator of the given index.
+// Activate the validator of the given index.
 func activate_validator(state *BeaconState, index ValidatorIndex, is_genesis bool) {
 	validator := state.validator_registry[index]
 	if is_genesis {
@@ -973,7 +973,7 @@ func update_validator_registry(state *BeaconState) {
 	// The maximum balance churn in Gwei (for deposits and exits separately)
 	max_balance_churn := Max(
 		MAX_DEPOSIT_AMOUNT,
-		total_balance / (2 * MAX_BALANCE_CHURN_QUOTIENT))
+		total_balance/(2*MAX_BALANCE_CHURN_QUOTIENT))
 
 	// Activate validators within the allowable balance churn
 	{
