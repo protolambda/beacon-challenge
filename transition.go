@@ -58,7 +58,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 		if err != nil {
 			return err
 		}
-		state.latest_randao_mixes[state.Epoch()%LATEST_RANDAO_MIXES_LENGTH] = xorBytes32(randao_mix, hash(block.randao_reveal))
+		state.latest_randao_mixes[state.Epoch()%LATEST_RANDAO_MIXES_LENGTH] = xorBytes32(randao_mix, hash(block.randao_reveal[:]))
 	}
 
 	// Eth1 data
@@ -308,7 +308,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 		for i, transfer := range block.body.transfers {
 			withdrawCred := Root{}
 			withdrawCred[31] = BLS_WITHDRAWAL_PREFIX_BYTE
-			copy(withdrawCred[1:], hash(transfer.pubkey)[1:])
+			copy(withdrawCred[1:], hash(transfer.pubkey[:])[1:])
 			// verify transfer data + signature. No separate error messages for line limit challenge...
 			if !(
 				state.validator_balances[transfer.from] >= transfer.amount &&
@@ -1152,11 +1152,11 @@ func get_shuffling(seed Bytes32, validators []Validator, epoch Epoch) [][]Valida
 	active_validator_indices := get_active_validator_indices(validators, epoch)
 	committee_count := get_epoch_committee_count(uint64(len(active_validator_indices)))
 	commitees := make([][]ValidatorIndex, committee_count, committee_count)
-	// TODO implement actual shuffling
-	shuffled_indices := active_validator_indices
-	committee_size := uint64(len(shuffled_indices)) / committee_count
+	// Active validators, shuffled in-place.
+	shuffleValidatorIndices(active_validator_indices, seed)
+	committee_size := uint64(len(active_validator_indices)) / committee_count
 	for i := uint64(0); i < committee_count; i += committee_size {
-		commitees[i] = shuffled_indices[i : i+committee_size]
+		commitees[i] = active_validator_indices[i : i+committee_size]
 	}
 	return commitees
 }

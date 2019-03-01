@@ -23,7 +23,7 @@ func hash_tree_root(input interface{}) Root {
 	return ZERO_HASH
 }
 
-func hash(input interface{}) Bytes32 {
+func hash(input []byte) Bytes32 {
 	return Bytes32{}
 }
 
