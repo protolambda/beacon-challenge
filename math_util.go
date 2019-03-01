@@ -1,18 +1,10 @@
 package beacon_challenge
 
 func Max(a Gwei, b Gwei) Gwei {
-	if a > b {
-		return a
-	} else {
-		return b
-	}
+	return Gwei(MaxU64(uint64(a), uint64(b)))
 }
 func Min(a Gwei, b Gwei) Gwei {
-	if a < b {
-		return a
-	} else {
-		return b
-	}
+	return Gwei(MinU64(uint64(a), uint64(b)))
 }
 
 func MaxU64(a uint64, b uint64) uint64 {
@@ -22,6 +14,7 @@ func MaxU64(a uint64, b uint64) uint64 {
 		return b
 	}
 }
+
 func MinU64(a uint64, b uint64) uint64 {
 	if a < b {
 		return a
@@ -42,5 +35,5 @@ func integer_squareroot(n uint64) uint64 {
 }
 
 func is_power_of_two(n uint64) bool {
-	return (n > 0) && (n & (n - 1) == 0)
+	return (n > 0) && (n&(n-1) == 0)
 }

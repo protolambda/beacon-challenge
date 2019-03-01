@@ -68,7 +68,7 @@ func (e Epoch) GetStartSlot() Slot {
 type Bitfield []byte
 
 func (b Bitfield) GetBit(i uint64) byte {
-	if uint64(len(b) << 3) > i {
+	if uint64(len(b)<<3) > i {
 		return (b[i>>3] >> (i & 7)) & 1
 	} else {
 		panic("invalid bitfield access")
@@ -80,7 +80,7 @@ func (b Bitfield) GetBit(i uint64) byte {
 //  - bits after this size (in bits) must be 0.
 func (b Bitfield) verifySize(size uint64) bool {
 	// check byte count
-	if uint64(len(b)) != (size + 7) >> 3 {
+	if uint64(len(b)) != (size+7)>>3 {
 		return false
 	}
 	// check if bitfield is padded with zero bits only

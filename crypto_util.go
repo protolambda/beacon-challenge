@@ -1,33 +1,28 @@
 package beacon_challenge
 
-func merkle_root(input interface{}) Root {
-	// TODO SSZ merkle root hashing
-	return ZERO_HASH
+import "crypto/sha256"
+
+// Merkleize values (where len(values) is a power of two) and return the Merkle root.
+// Note that the leaves are not hashed.
+func merkle_root(values []Bytes32) Root {
+	o := make([]Bytes32, len(values)*2)
+	copy(o[len(values):], values)
+	buf := make([]byte, 64, 64)
+	for i := len(values) - 1; i >= 0; i-- {
+		copy(buf[:32], o[i*2][:])
+		copy(buf[32:], o[i*2+1][:])
+		o[i] = hash(buf)
+	}
+	return Root(o[1])
 }
 
-func signed_root(input interface{}, signType string) Root {
-	// TODO SSZ signed root
-	return ZERO_HASH
-}
-
-func bls_verify(pubkey BLSPubkey, message_hash Root, signature BLSSignature, domain BlsDomain) bool {
-	// TODO BLS verify single
-	return false
-}
-
-func ssz_encode(input interface{}) []byte {
-	// TODO SSZ encode to bytes
-	return []byte{}
-}
-
-func hash_tree_root(input interface{}) Root {
-	// TODO SSZ hash tree root
-	return ZERO_HASH
-}
-
-func hash(input []byte) Bytes32 {
-	// TODO just hash, SHA 256 for now?
-	return Bytes32{}
+func hash(input []byte) (out Bytes32) {
+	// TODO this could be optimized,
+	//  in reality you don't want to re-init the hashing function every time you call this
+	hash := sha256.New()
+	hash.Write(input)
+	copy(out[:], hash.Sum(nil))
+	return out
 }
 
 func xorBytes32(a Bytes32, b Bytes32) (out Bytes32) {
@@ -35,16 +30,6 @@ func xorBytes32(a Bytes32, b Bytes32) (out Bytes32) {
 		out[i] = a[i] ^ b[i]
 	}
 	return out
-}
-
-func bls_aggregate_pubkeys(pubkeys []BLSPubkey) BLSPubkey {
-	// TODO aggregate pubkeys with BLS
-	return BLSPubkey{}
-}
-
-func bls_verify_multiple(pubkeys []BLSPubkey, message_hashes []Root, signature BLSSignature, domain BlsDomain) bool {
-	// TODO BLS verify multiple
-	return false
 }
 
 // Verify that the given leaf is on the merkle branch.

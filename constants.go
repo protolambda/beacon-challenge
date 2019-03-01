@@ -14,25 +14,23 @@ const DEPOSIT_CONTRACT_TREE_DEPTH = 1 << 5 // =  32
 
 // Gwei values
 const MILLION_GWEI Gwei = 1000000000
-const MIN_DEPOSIT_AMOUNT Gwei = (1 << 0) * MILLION_GWEI            // =  1,000,000,000  Gwei
-const MAX_DEPOSIT_AMOUNT Gwei = (1 << 5) * MILLION_GWEI            // =  32,000,000,000  Gwei
-const FORK_CHOICE_BALANCE_INCREMENT Gwei = (1 << 0) * MILLION_GWEI // =  1,000,000,000  Gwei
-const EJECTION_BALANCE Gwei = (1 << 4) * MILLION_GWEI              // =  16,000,000,000  Gwei
+const MIN_DEPOSIT_AMOUNT Gwei = (1 << 0) * MILLION_GWEI // =  1,000,000,000  Gwei
+const MAX_DEPOSIT_AMOUNT Gwei = (1 << 5) * MILLION_GWEI // =  32,000,000,000  Gwei
+// unused const FORK_CHOICE_BALANCE_INCREMENT Gwei = (1 << 0) * MILLION_GWEI // =  1,000,000,000  Gwei
+const EJECTION_BALANCE Gwei = (1 << 4) * MILLION_GWEI // =  16,000,000,000  Gwei
 
 // Initial values
-const GENESIS_FORK_VERSION uint64 = 0
+// unused const GENESIS_FORK_VERSION uint64 = 0
 const GENESIS_SLOT Slot = 1 << 32
 const GENESIS_EPOCH Epoch = Epoch(GENESIS_SLOT / SLOTS_PER_EPOCH)
-const GENESIS_START_SHARD Shard = 0
-const FAR_FUTURE_EPOCH Epoch = 1<<64 - 1
 
-var ZERO_HASH Root = Root{}
-var EMPTY_SIGNATURE BLSSignature = BLSSignature{}
+// unused const GENESIS_START_SHARD Shard = 0
+const FAR_FUTURE_EPOCH Epoch = 1<<64 - 1
 
 const BLS_WITHDRAWAL_PREFIX_BYTE byte = 0
 
 // Time parameters
-const SECONDS_PER_SLOT Seconds = 6                       //  seconds  6 seconds
+// unused const SECONDS_PER_SLOT Seconds = 6                       //  seconds  6 seconds
 const MIN_ATTESTATION_INCLUSION_DELAY Slot = 1 << 2      // =  4  slots  24 seconds
 const SLOTS_PER_EPOCH Slot = 1 << 6                      // =  64  slots  6.4 minutes
 const MIN_SEED_LOOKAHEAD Epoch = 1 << 0                  // =  1  epochs  6.4 minutes
@@ -68,7 +66,6 @@ const DOMAIN_PROPOSAL BlsDomain = 2
 const DOMAIN_EXIT BlsDomain = 3
 const DOMAIN_RANDAO BlsDomain = 4
 const DOMAIN_TRANSFER BlsDomain = 5
-
 
 // Custom constants for internal usage, no need to standardize
 
