@@ -970,51 +970,66 @@ func get_block_root(state *BeaconState, slot Slot) (Root, error) {
 }
 
 // Verify validity of slashable_attestation fields.
-func verify_slashable_attestation(state *BeaconState, attestation *SlashableAttestation) bool {
-	// TODO
-
-	/*
+func verify_slashable_attestation(state *BeaconState, slashable_attestation *SlashableAttestation) bool {
 	// TODO Moved condition to top, compared to spec. Data can be way too big, get rid of that ASAP.
-    if len(slashable_attestation.validator_indices) > MAX_INDICES_PER_SLASHABLE_VOTE:
-        return False
+    if len(slashable_attestation.validator_indices) > MAX_INDICES_PER_SLASHABLE_VOTE {
+		return false
+	}
 
-	// TODO verify indices explicitly with check_validator_index
+	if !slashable_attestation.custody_bitfield.IsZero() { // [TO BE REMOVED IN PHASE 1]
+		return false
+	}
 
-	if slashable_attestation.custody_bitfield != b'\x00' * len(slashable_attestation.custody_bitfield):  # [TO BE REMOVED IN PHASE 1]
-        return False
+    if len(slashable_attestation.validator_indices) == 0 {
+		return false
+	}
 
-    if len(slashable_attestation.validator_indices) == 0:
-        return False
+    // simple check if the list is sorted.
+    for i := 0; i < len(slashable_attestation.validator_indices) - 1; i++ {
+		if slashable_attestation.validator_indices[i] >= slashable_attestation.validator_indices[i+1] {
+			return false
+		}
+	}
 
-    for i in range(len(slashable_attestation.validator_indices) - 1):
-        if slashable_attestation.validator_indices[i] >= slashable_attestation.validator_indices[i + 1]:
-            return False
+    // verify the size of the bitfield: it must have exactly enough bits for the given amount of validators.
+    if !slashable_attestation.custody_bitfield.verifySize(uint64(len(slashable_attestation.validator_indices))) {
+		return false
+	}
 
-    if not verify_bitfield(slashable_attestation.custody_bitfield, len(slashable_attestation.validator_indices)):
-        return False
-
-    custody_bit_0_indices = []
-    custody_bit_1_indices = []
-    for i, validator_index in enumerate(slashable_attestation.validator_indices):
-        if get_bitfield_bit(slashable_attestation.custody_bitfield, i) == 0b0:
-            custody_bit_0_indices.append(validator_index)
-        else:
-            custody_bit_1_indices.append(validator_index)
-
+    custody_bit_0_pubkeys := make([]BLSPubkey, 0)
+    custody_bit_1_pubkeys := make([]BLSPubkey, 0)
+    for i, validator_index := range slashable_attestation.validator_indices {
+    	// TODO: we could add a check to the spec for two cases:
+    	// TODO 1) An edge case:
+		//     what if the committee size is n*8 + 3, and there is an index n*8 +
+		//     The index is still valid here, and would result in an additional custody bit 0 pubkey.
+		// TODO 2) The slashable indices is one giant sorted list of numbers,
+		//   bigger than the registry, causing a out-of-bounds panic for some of the indices.
+		// Implemented two checks:
+    	if validator_index > ValidatorIndex(len(slashable_attestation.validator_indices)) ||
+    		check_validator_index(state, validator_index) != nil {
+    		return false
+		}
+    	// Update spec, or is this acceptable? (the bitfield verify size doesn't suffice here)
+		if slashable_attestation.custody_bitfield.GetBit(uint64(i)) == 0 {
+			custody_bit_0_pubkeys = append(custody_bit_0_pubkeys, state.validator_registry[validator_index].pubkey)
+		} else {
+			custody_bit_1_pubkeys = append(custody_bit_1_pubkeys, state.validator_registry[validator_index].pubkey)
+		}
+	}
+	// don't trust, verify
     return bls_verify_multiple(
-        pubkeys=[
-            bls_aggregate_pubkeys([state.validator_registry[i].pubkey for i in custody_bit_0_indices]),
-            bls_aggregate_pubkeys([state.validator_registry[i].pubkey for i in custody_bit_1_indices]),
-        ],
-        message_hashes=[
-            hash_tree_root(AttestationDataAndCustodyBit(data=slashable_attestation.data, custody_bit=0b0)),
-            hash_tree_root(AttestationDataAndCustodyBit(data=slashable_attestation.data, custody_bit=0b1)),
-        ],
-        signature=slashable_attestation.aggregate_signature,
-        domain=get_domain(state.fork, slot_to_epoch(slashable_attestation.data.slot), DOMAIN_ATTESTATION),
+       []BLSPubkey{
+		   bls_aggregate_pubkeys(custody_bit_0_pubkeys),
+		   bls_aggregate_pubkeys(custody_bit_1_pubkeys),
+	   },
+       []Root{
+		   hash_tree_root(AttestationDataAndCustodyBit{data: slashable_attestation.data, custody_bit: false}),
+		   hash_tree_root(AttestationDataAndCustodyBit{data: slashable_attestation.data, custody_bit: true}),
+	   },
+       slashable_attestation.aggregate_signature,
+       get_domain(state.fork, slashable_attestation.data.slot.ToEpoch(), DOMAIN_ATTESTATION),
     )
-	 */
-	return false
 }
 
 // Check if a and b have the same target epoch. //TODO: spec has wrong wording here (?)

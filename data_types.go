@@ -63,61 +63,39 @@ func (e Epoch) GetStartSlot() Slot {
 	return Slot(e) * SLOTS_PER_EPOCH
 }
 
-// bits are indexed from right to left of internal byte array. Inside byte: also from right to left.
-type Bitfield struct {
-	Bytes  []byte
-	Length uint64
-}
+// bits are indexed from left to right of internal byte array (like a little endian integer).
+// But inside byte it is from right to left. //TODO: correct?
+type Bitfield []byte
 
 func (b Bitfield) GetBit(i uint64) byte {
-	if b.Length > i {
-		return b.Bytes[i>>3] >> (i & 7)
+	if uint64(len(b) << 3) > i {
+		return b[i>>3] >> (i & 7)
 	} else {
 		panic("invalid bitfield access")
 	}
 }
 
-func (b Bitfield) SetLen(length uint64) {
-	lengthBytes := length >> 3
-	if length&7 == 0 {
-		lengthBytes++
+// Verify bitfield against the size:
+//  - the bitfield must have the correct amount of bytes
+//  - bits after this size (in bits) must be 0.
+func (b Bitfield) verifySize(size uint64) bool {
+	// check byte count
+	if uint64(len(b)) != (size + 7) >> 3 {
+		return false
 	}
-	if b.Length <= length {
-		// fit in old capacity?
-		if uint64(cap(b.Bytes)) >= lengthBytes {
-			b.Bytes = b.Bytes[:lengthBytes]
-			// overwrite with zeros, old capacity may have content
-			for i := b.Length; i <= lengthBytes; i++ {
-				b.Bytes[i] = 0
-			}
-		} else {
-			// TODO: we could allocate extra in advance
-			newBytes := make([]byte, lengthBytes, lengthBytes)
-			copy(newBytes, b.Bytes)
-			b.Bytes = newBytes
+	// check if bitfield is padded with zero bits only
+	end := uint64(len(b)) << 3
+	for i := size; i < end; i++ {
+		if b.GetBit(i) == 1 {
+			return false
 		}
 	}
-	b.Length = length
-}
-
-func (b Bitfield) SetBit(i uint64, bit byte) {
-	if bit != 1 && bit != 0 {
-		panic("invalid bit supplied to bitfield SetBit")
-	}
-	// extend bitfield if necessary
-	if b.Length <= i {
-		b.SetLen(i + 1)
-	}
-	b.Bytes[i>>3] |= bit << (i & 7)
+	return true
 }
 
 func (b Bitfield) IsZero() bool {
-	lengthBytes := b.Length >> 3
-	if b.Length&7 == 0 {
-		lengthBytes++
-	}
-	for i := uint64(0); i < lengthBytes; i++ {
-		if b.Bytes[i] != 0 {
+	for i := 0; i < len(b); i++ {
+		if b[i] != 0 {
 			return false
 		}
 	}
