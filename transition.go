@@ -862,12 +862,12 @@ func get_delayed_activation_exit_epoch(epoch Epoch) Epoch {
 func exit_validator(state *BeaconState, index ValidatorIndex) {
 	validator := &state.validator_registry[index]
 
-	exit_epoch := get_delayed_activation_exit_epoch(state.Epoch())
+	delayed_activation_exit_epoch := get_delayed_activation_exit_epoch(state.Epoch())
 	// The following updates only occur if not previous exited
-	if validator.exit_epoch > exit_epoch {
+	if validator.exit_epoch > delayed_activation_exit_epoch {
 		return
 	}
-	validator.exit_epoch = exit_epoch
+	validator.exit_epoch = delayed_activation_exit_epoch
 }
 
 // Initiate the validator of the given index
@@ -995,7 +995,7 @@ func update_validator_registry(state *BeaconState) {
 	{
 		balance_churn := Gwei(0)
 		for index, validator := range state.validator_registry {
-			if validator.activation_epoch == FAR_FUTURE_EPOCH && validator.initiated_exit {
+			if validator.exit_epoch == FAR_FUTURE_EPOCH && validator.initiated_exit {
 				// Check the balance churn would be within the allowance
 				balance_churn += get_effective_balance(state, ValidatorIndex(index))
 				if balance_churn > max_balance_churn {

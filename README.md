@@ -15,7 +15,7 @@ Submission for Twitter-bounty by Justin Drake:
 
 Challenge accepted.
 
-Git ref of beacon spec used for this challenge: [e7d908f](https://github.com/ethereum/eth2.0-specs/blob/e7d908f1f1814791870158fc1fb7f4b82cfb7f4f/specs/core/0_beacon-chain.md) (Current dev branch at the time of starting the challenge).
+Git ref of beacon spec used for this challenge: [8df7de150e68408b78d6488a6f4c9cf8e18c4405](https://github.com/ethereum/eth2.0-specs/blob/8df7de150e68408b78d6488a6f4c9cf8e18c4405/specs/core/0_beacon-chain.md) (Current dev branch at the time of starting the challenge).
 
 ## License
 
