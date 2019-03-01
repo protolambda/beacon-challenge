@@ -1,7 +1,7 @@
 package beacon_challenge
 
 func merkle_root(input interface{}) Root {
-	// TODO SSZ + hashing
+	// TODO SSZ merkle root hashing
 	return ZERO_HASH
 }
 
@@ -11,19 +11,22 @@ func signed_root(input interface{}, signType string) Root {
 }
 
 func bls_verify(pubkey BLSPubkey, message_hash Root, signature BLSSignature, domain BlsDomain) bool {
+	// TODO BLS verify single
 	return false
 }
 
 func ssz_encode(input interface{}) []byte {
-	// TODO
+	// TODO SSZ encode to bytes
 	return []byte{}
 }
 
 func hash_tree_root(input interface{}) Root {
+	// TODO SSZ hash tree root
 	return ZERO_HASH
 }
 
 func hash(input []byte) Bytes32 {
+	// TODO just hash, SHA 256 for now?
 	return Bytes32{}
 }
 
@@ -40,7 +43,7 @@ func bls_aggregate_pubkeys(pubkeys []BLSPubkey) BLSPubkey {
 }
 
 func bls_verify_multiple(pubkeys []BLSPubkey, message_hashes []Root, signature BLSSignature, domain BlsDomain) bool {
-	// TODO BLS
+	// TODO BLS verify multiple
 	return false
 }
 
