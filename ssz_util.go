@@ -5,9 +5,6 @@ import (
 	"reflect"
 )
 
-// Number of bytes per chunk.
-const BYTES_PER_CHUNK = 32
-
 func signed_root(input interface{}, signType string) Root {
 	// TODO SSZ signed root
 	return Root{}
@@ -83,11 +80,71 @@ func sszSerialize(v reflect.Value, dst *[]byte) (encodedLen uint32) {
 		}
 		return encodedLen
 	default:
-		panic("encoding unsupported value kind: " + v.Kind().String())
+		panic("ssz encoding: unsupported value kind: " + v.Kind().String())
 	}
 }
 
 func hash_tree_root(input interface{}) Root {
-	// TODO SSZ hash tree root
-	return Root{}
+	return sszHashTreeRoot(reflect.ValueOf(input))
+}
+
+/*
+TODO: see specs #679, comment.
+Implementation here simply assumes fixed-length arrays only have elements of fixed-length.
+ */
+
+func sszHashTreeRoot(v reflect.Value) Root {
+	switch v.Kind() {
+	case reflect.Ptr:
+		return sszHashTreeRoot(v.Elem())
+	// "basic object or a tuple of basic objects"
+	case reflect.Uint8, reflect.Uint32, reflect.Uint64, reflect.Bool, reflect.Array:
+		return merkle_root(sszPack(v))
+	case reflect.Slice:
+		switch v.Type().Elem().Kind() {
+		// "list of basic objects"
+		case reflect.Uint8, reflect.Uint32, reflect.Uint64, reflect.Bool, reflect.Array:
+			return sszMixInLength(merkle_root(sszPack(v)), uint64(v.Len()))
+		// Interpretation: list of composite / var-size (i.e. the non-basic) objects
+		default:
+			length := v.Len()
+			data := make([]Bytes32,length)
+			for i := 0; i < length; i++ {
+				data[i] = Bytes32(sszHashTreeRoot(v.Index(i)))
+			}
+			return sszMixInLength(merkle_root(data), uint64(length))
+		}
+	// Interpretation: container, similar to list of complex objects, but without length prefix.
+	case reflect.Struct:
+		data := make([]Bytes32, v.NumField())
+		for i, length := 0, v.NumField(); i < length; i++ {
+			data[i] = Bytes32(sszHashTreeRoot(v.Field(i)))
+		}
+		return merkle_root(data)
+	default:
+		panic("tree-hash: unsupported value kind: " + v.Kind().String())
+	}
+}
+
+func sszPack(input reflect.Value) []Bytes32 {
+	serialized := make([]byte, 0)
+	sszSerialize(input, &serialized)
+	// floored: handle all normal chunks first
+	flooredChunkCount := len(serialized) / 32
+	// ceiled: include any partial chunk at end as full chunk (with padding)
+	out := make([]Bytes32, (len(serialized) + 31) / 32)
+	for i := 0; i < flooredChunkCount; i++ {
+		copy(out[i][:], serialized[i << 5: (i + 1) << 5])
+	}
+	// if there is a partial chunk at the end, handle it as a special case:
+	if len(serialized) & 31 != 0 {
+		copy(out[flooredChunkCount][:len(serialized)&0x1F], serialized[flooredChunkCount<<5:])
+	}
+	return out
+}
+
+func sszMixInLength(data Root, length uint64) Root {
+	lengthInput := Bytes32{}
+	binary.LittleEndian.PutUint64(lengthInput[:], length)
+	return merkle_root([]Bytes32{Bytes32(data), lengthInput})
 }
