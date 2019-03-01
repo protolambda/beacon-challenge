@@ -738,7 +738,39 @@ func EpochTransition(state *BeaconState) {
 	{
 		// > update registry
 		{
-			// TODO update / shuffle registry
+			state.previous_shuffling_epoch = state.current_shuffling_epoch
+			state.previous_shuffling_start_shard = state.current_shuffling_start_shard
+			state.previous_shuffling_seed = state.current_shuffling_seed
+
+			if state.finalized_epoch > state.validator_registry_update_epoch {
+				needsUpdate := true
+				{
+					committee_count := get_epoch_committee_count(get_active_validator_count(state.validator_registry, current_epoch))
+					for i := uint64(0); i < committee_count; i++ {
+						shard := (state.current_shuffling_start_shard + Shard(i)) % SHARD_COUNT
+						if state.latest_crosslinks[shard].epoch <= state.validator_registry_update_epoch {
+							needsUpdate = false
+						}
+					}
+				}
+				if needsUpdate {
+					update_validator_registry(state)
+					state.current_shuffling_epoch = next_epoch
+					// recompute committee count, some validators may not be active anymore due to the above update.
+					committee_count := get_epoch_committee_count(get_active_validator_count(state.validator_registry, current_epoch))
+					state.current_shuffling_start_shard = (state.current_shuffling_start_shard + Shard(committee_count)) % SHARD_COUNT
+					// ignore error, current_shuffling_epoch is a trusted input
+					state.current_shuffling_seed, _ = generate_seed(state, state.current_shuffling_epoch)
+				} else {
+					// If a validator registry update does not happen:
+					epochs_since_last_registry_update := current_epoch - state.validator_registry_update_epoch
+					if epochs_since_last_registry_update > 1 && is_power_of_two(uint64(epochs_since_last_registry_update)) {
+						state.current_shuffling_epoch = next_epoch
+						// Note that state.current_shuffling_start_shard is left unchanged
+						state.current_shuffling_seed, _ = generate_seed(state, state.current_shuffling_epoch)
+					}
+				}
+			}
 		}
 
 		// > process slashings
@@ -801,6 +833,16 @@ func EpochTransition(state *BeaconState) {
 			}
 			state.latest_attestations = attests
 		}
+	}
+}
+
+//  Activate the validator of the given index.
+func activate_validator(state *BeaconState, index ValidatorIndex, is_genesis bool) {
+	validator := state.validator_registry[index]
+	if is_genesis {
+		validator.activation_epoch = GENESIS_EPOCH
+	} else {
+		validator.activation_epoch = get_delayed_activation_exit_epoch(state.Epoch())
 	}
 }
 
@@ -918,6 +960,52 @@ func process_deposit(state *BeaconState, dep *Deposit) error {
 		state.validator_balances[val_index] += amount
 	}
 	return nil
+}
+
+// Update validator registry.
+func update_validator_registry(state *BeaconState) {
+	current_epoch := state.Epoch()
+	// The active validators
+	active_validator_indices := get_active_validator_indices(state.validator_registry, current_epoch)
+	// The total effective balance of active validators
+	total_balance := get_total_balance(state, active_validator_indices)
+
+	// The maximum balance churn in Gwei (for deposits and exits separately)
+	max_balance_churn := Max(
+		MAX_DEPOSIT_AMOUNT,
+		total_balance / (2 * MAX_BALANCE_CHURN_QUOTIENT))
+
+	// Activate validators within the allowable balance churn
+	{
+		balance_churn := Gwei(0)
+		for index, validator := range state.validator_registry {
+			if validator.activation_epoch == FAR_FUTURE_EPOCH && state.validator_balances[index] >= MAX_DEPOSIT_AMOUNT {
+				// Check the balance churn would be within the allowance
+				balance_churn += get_effective_balance(state, ValidatorIndex(index))
+				if balance_churn > max_balance_churn {
+					break
+				}
+				//  Activate validator
+				activate_validator(state, ValidatorIndex(index), false)
+			}
+		}
+	}
+
+	// Exit validators within the allowable balance churn
+	{
+		balance_churn := Gwei(0)
+		for index, validator := range state.validator_registry {
+			if validator.activation_epoch == FAR_FUTURE_EPOCH && validator.initiated_exit {
+				// Check the balance churn would be within the allowance
+				balance_churn += get_effective_balance(state, ValidatorIndex(index))
+				if balance_churn > max_balance_churn {
+					break
+				}
+				// Exit validator
+				exit_validator(state, ValidatorIndex(index))
+			}
+		}
+	}
 }
 
 // Return the participant indices at for the attestation_data and bitfield
