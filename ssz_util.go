@@ -53,9 +53,9 @@ func ssz_encode(input interface{}) []byte {
 
 func withSize(dst *[]byte, size uint64) (start uint64, end uint64) {
 	// if capacity is too low, extend it.
-	start, end = uint64(len(*dst)), uint64(len(*dst)) + size
+	start, end = uint64(len(*dst)), uint64(len(*dst))+size
 	if uint64(cap(*dst)) < end {
-		res := make([]byte, len(*dst), len(*dst) * 2)
+		res := make([]byte, len(*dst), len(*dst)*2)
 		copy(res[0:start], *dst)
 		*dst = res
 	}
@@ -79,7 +79,7 @@ func sszSerialize(v reflect.Value, dst *[]byte) (encodedLen uint32) {
 		s, e := withSize(dst, 8)
 		binary.LittleEndian.PutUint64((*dst)[s:e], uint64(v.Uint()))
 		return 8
-	case reflect.Bool:// "bool"
+	case reflect.Bool: // "bool"
 		s, _ := withSize(dst, 1)
 		if v.Bool() {
 			(*dst)[s] = 1
@@ -87,7 +87,7 @@ func sszSerialize(v reflect.Value, dst *[]byte) (encodedLen uint32) {
 			(*dst)[s] = 1
 		}
 		return 1
-	case reflect.Array:// "tuple"
+	case reflect.Array: // "tuple"
 		// TODO: We're ignoring that arrays with variable sized items (eg. slices) are a thing in Go. Don't use them.
 		// Possible workarounds for this: (i) check sizes before encoding. (ii) panic if serializedSize is irregular.
 		// Special fields (e.g. "Root", "Bytes32" will just be packed as packed arrays, which is fine, little-endian!)
@@ -96,7 +96,7 @@ func sszSerialize(v reflect.Value, dst *[]byte) (encodedLen uint32) {
 			encodedLen += serializedSize
 		}
 		return encodedLen
-	case reflect.Slice:// "list"
+	case reflect.Slice: // "list"
 		for i, size := 0, v.Len(); i < size; i++ {
 			// allocate size prefix: BYTES_PER_LENGTH_PREFIX
 			s, e := withSize(dst, 4)
@@ -105,7 +105,7 @@ func sszSerialize(v reflect.Value, dst *[]byte) (encodedLen uint32) {
 			encodedLen += 4 + serializedSize
 		}
 		return encodedLen
-	case reflect.Struct:// "container"
+	case reflect.Struct: // "container"
 		for i, size := 0, v.NumField(); i < size; i++ {
 			// allocate size prefix: BYTES_PER_LENGTH_PREFIX
 			s, e := withSize(dst, 4)
@@ -143,7 +143,7 @@ func sszHashTreeRoot(v reflect.Value) Root {
 		// Interpretation: list of composite / var-size (i.e. the non-basic) objects
 		default:
 			length := v.Len()
-			data := make([]Bytes32,length)
+			data := make([]Bytes32, length)
 			for i := 0; i < length; i++ {
 				data[i] = Bytes32(sszHashTreeRoot(v.Index(i)))
 			}
@@ -167,12 +167,12 @@ func sszPack(input reflect.Value) []Bytes32 {
 	// floored: handle all normal chunks first
 	flooredChunkCount := len(serialized) / 32
 	// ceiled: include any partial chunk at end as full chunk (with padding)
-	out := make([]Bytes32, (len(serialized) + 31) / 32)
+	out := make([]Bytes32, (len(serialized)+31)/32)
 	for i := 0; i < flooredChunkCount; i++ {
-		copy(out[i][:], serialized[i << 5: (i + 1) << 5])
+		copy(out[i][:], serialized[i<<5:(i+1)<<5])
 	}
 	// if there is a partial chunk at the end, handle it as a special case:
-	if len(serialized) & 31 != 0 {
+	if len(serialized)&31 != 0 {
 		copy(out[flooredChunkCount][:len(serialized)&0x1F], serialized[flooredChunkCount<<5:])
 	}
 	return out
