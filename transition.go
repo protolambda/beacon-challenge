@@ -681,9 +681,9 @@ func EpochTransition(state *BeaconState) {
 		// > Attestation inclusion
 		{
 			// Attestations should be included timely.
-			for _, attester_index := range previous_epoch_attester_indices {
-				// TODO find inclusion slot of attester's attestation
-				inclusion_slot := Slot(0)
+			// TODO Difference from spec: it is easier (and faster) to iterate through the precomputed map
+			for attester_index, att_index := range previous_epoch_earliest_attestations {
+				inclusion_slot := state.latest_attestations[att_index].inclusion_slot
 				proposer_index := get_beacon_proposer_index(state, inclusion_slot)
 				state.validator_balances[proposer_index] += base_reward(attester_index) / ATTESTATION_INCLUSION_REWARD_QUOTIENT
 			}
