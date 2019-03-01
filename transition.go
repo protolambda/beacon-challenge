@@ -177,7 +177,10 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 				return errors.New(fmt.Sprintf("attestation %d has zeroed aggregation bitfield, not valid", i))
 			}
 
-			crosslink_committees := get_crosslink_committees_at_slot(state, attestation.data.slot, false)
+			crosslink_committees, err := get_crosslink_committees_at_slot(state, attestation.data.slot, false)
+			if err != nil {
+				return err
+			}
 			crosslink_committee := CrosslinkCommittee{}
 			for _, committee := range crosslink_committees {
 				if committee.Shard == attestation.data.shard {
@@ -196,8 +199,14 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 				return errors.New(fmt.Sprintf("attestation %d has non-zero bitfield(s)", i))
 			}
 
-			participants := get_attestation_participants(state, &attestation.data, &attestation.aggregation_bitfield)
-			custody_bit_1_participants := get_attestation_participants(state, &attestation.data, &attestation.custody_bitfield)
+			participants, err := get_attestation_participants(state, &attestation.data, &attestation.aggregation_bitfield)
+			if err != nil {
+				return errors.New("participants could not be derived from aggregation_bitfield")
+			}
+			custody_bit_1_participants, err := get_attestation_participants(state, &attestation.data, &attestation.custody_bitfield)
+			if err != nil {
+				return errors.New("participants could not be derived from custody_bitfield")
+			}
 			custody_bit_0_participants := participants.Minus(custody_bit_1_participants)
 
 			// get lists of pubkeys for both 0 and 1 custody-bits
@@ -344,7 +353,9 @@ func EpochTransition(state *BeaconState) {
 	//current_epoch_earliest_attestations := make(map[ValidatorIndex]uint64)
 	for i, att := range state.latest_attestations {
 		ep := att.data.slot.ToEpoch()
-		for _, participant := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+		// error ignored, attestation is trusted.
+		participants, _ := get_attestation_participants(state, &att.data, &att.aggregation_bitfield)
+		for _, participant := range participants {
 			if ep == previous_epoch {
 				if existingIndex, ok := previous_epoch_earliest_attestations[participant];
 					!ok || state.latest_attestations[existingIndex].inclusion_slot < att.inclusion_slot {
@@ -399,7 +410,9 @@ func EpochTransition(state *BeaconState) {
 			head_block_root, err := get_block_root(state, att.data.slot)
 			isForHead := err == nil && att.data.beacon_block_root == head_block_root
 
-			for _, vIndex := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+			// error ignored, attestation is trusted.
+			participants, _ := get_attestation_participants(state, &att.data, &att.aggregation_bitfield)
+			for _, vIndex := range participants {
 
 				// If the attestation is for a block boundary:
 				if isForBoundary {
@@ -413,7 +426,9 @@ func EpochTransition(state *BeaconState) {
 		} else if ep == current_epoch {
 			boundary_block_root, err := get_block_root(state, current_epoch.GetStartSlot())
 			isForBoundary := err == nil && att.data.epoch_boundary_root == boundary_block_root
-			for _, vIndex := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+			// error ignored, attestation is trusted.
+			participants, _ := get_attestation_participants(state, &att.data, &att.aggregation_bitfield)
+			for _, vIndex := range participants {
 				// If the attestation is for a block boundary:
 				if isForBoundary {
 					current_epoch_boundary_attester_indices = append(current_epoch_boundary_attester_indices, vIndex)
@@ -471,7 +486,8 @@ func EpochTransition(state *BeaconState) {
 		start := previous_epoch.GetStartSlot()
 		end := next_epoch.GetStartSlot()
 		for slot := start; slot < end; slot++ {
-			crosslink_committees_at_slot := get_crosslink_committees_at_slot(state, slot, false)
+			// epoch is trusted, ignore error
+			crosslink_committees_at_slot, _ := get_crosslink_committees_at_slot(state, slot, false)
 			for _, cross_comm := range crosslink_committees_at_slot {
 
 				// The spec is insane in making everything a helper function, ignoring scope/encapsulation, and not being to-the-point.
@@ -487,7 +503,9 @@ func EpochTransition(state *BeaconState) {
 						ep == previous_epoch || ep == current_epoch &&
 							att.data.shard == cross_comm.Shard &&
 							att.data.crosslink_data_root == crosslink_data_root {
-						for _, participant := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+						// error ignored, attestation is trusted.
+						participants, _ := get_attestation_participants(state, &att.data, &att.aggregation_bitfield)
+						for _, participant := range participants {
 							weightedCrosslinks[att.data.crosslink_data_root] += get_effective_balance(state, participant)
 						}
 					}
@@ -516,7 +534,9 @@ func EpochTransition(state *BeaconState) {
 						ep == previous_epoch || ep == current_epoch &&
 							att.data.shard == cross_comm.Shard &&
 							att.data.crosslink_data_root == winning_root {
-						for _, participant := range get_attestation_participants(state, &att.data, &att.aggregation_bitfield) {
+						// error ignored, attestation is trusted.
+						participants, _ := get_attestation_participants(state, &att.data, &att.aggregation_bitfield)
+						for _, participant := range participants {
 							for _, vIndex := range cross_comm.Committee {
 								if participant == vIndex {
 									winning_attesting_committee_members = append(winning_attesting_committee_members, vIndex)
@@ -675,7 +695,8 @@ func EpochTransition(state *BeaconState) {
 			start := previous_epoch.GetStartSlot()
 			end := next_epoch.GetStartSlot()
 			for slot := start; slot < end; slot++ {
-				crosslink_committees_at_slot := get_crosslink_committees_at_slot(state, slot, false)
+				// epoch is trusted, ignore error
+				crosslink_committees_at_slot, _ := get_crosslink_committees_at_slot(state, slot, false)
 				for _, cross_comm := range crosslink_committees_at_slot {
 
 					// We remembered the winning root
@@ -717,7 +738,7 @@ func EpochTransition(state *BeaconState) {
 	{
 		// > update registry
 		{
-
+			// TODO update / shuffle registry
 		}
 
 		// > process slashings
@@ -813,6 +834,15 @@ func initiate_validator_exit(state *BeaconState, index ValidatorIndex) {
 	validator.initiated_exit = true
 }
 
+func get_active_validator_count(validator_registry []Validator, epoch Epoch) (count uint64) {
+	for _, v := range validator_registry {
+		if v.IsActive(epoch) {
+			count++
+		}
+	}
+	return count
+}
+
 func get_active_validator_indices(validator_registry []Validator, epoch Epoch) []ValidatorIndex {
 	res := make([]ValidatorIndex, 0, len(validator_registry))
 	for i, v := range validator_registry {
@@ -890,12 +920,71 @@ func process_deposit(state *BeaconState, dep *Deposit) error {
 	return nil
 }
 
-func get_attestation_participants(state *BeaconState, data *AttestationData, bitfield *Bitfield) ValidatorIndexSet {
-	// TODO implement spec function
-	res := make([]ValidatorIndex, 0)
+// Return the participant indices at for the attestation_data and bitfield
+func get_attestation_participants(state *BeaconState, attestation_data *AttestationData, bitfield *Bitfield) (ValidatorIndexSet, error) {
+	// Find the committee in the list with the desired shard
+	crosslink_committees := get_crosslink_committees_at_slot(state, attestation_data.slot, false)
 
-	return res
+	var crosslink_committee []ValidatorIndex
+	for _, cross_comm := range crosslink_committees {
+		if cross_comm.Shard == attestation_data.shard {
+			crosslink_committee = cross_comm.Committee
+			break
+		}
+	}
+	if crosslink_committee == nil {
+		return nil, errors.New(fmt.Sprintf("cannot find crosslink committee at slot %d for shard %d", attestation_data.slot, attestation_data.shard))
+	}
+	if !bitfield.verifySize(uint64(len(crosslink_committee))) {
+		return nil, errors.New("bitfield has wrong size for corresponding crosslink committee")
+	}
+
+	// Find the participating attesters in the committee
+	participants := make(ValidatorIndexSet, 0)
+	for i, vIndex := range crosslink_committee {
+		if bitfield.GetBit(uint64(i)) == 1 {
+			participants = append(participants, vIndex)
+		}
+	}
+	return participants, nil
 }
+
+// Return the index root at a recent epoch
+func get_active_index_root(state *BeaconState, epoch Epoch) (Root, error) {
+	// TODO: should we propagate this error instead?
+	if !(state.Epoch() - LATEST_ACTIVE_INDEX_ROOTS_LENGTH + ACTIVATION_EXIT_DELAY < epoch && epoch <= state.Epoch() + ACTIVATION_EXIT_DELAY) {
+		return Root{}, errors.New("cannot get active index root, out of bounds.")
+	}
+	return state.latest_active_index_roots[epoch % LATEST_ACTIVE_INDEX_ROOTS_LENGTH], nil
+}
+
+// Generate a seed for the given epoch
+func generate_seed(state *BeaconState, epoch Epoch) (Bytes32, error) {
+	randao_mix, err := get_randao_mix(state, epoch - MIN_SEED_LOOKAHEAD)
+	if err != nil {
+		return Bytes32{}, err
+	}
+	index_root, err := get_active_index_root(state, epoch)
+	if err != nil {
+		return Bytes32{}, err
+	}
+	buf := make([]byte, 32 * 3)
+	copy(buf[0:32], randao_mix[:])
+	copy(buf[32:32*2], index_root[:])
+	binary.LittleEndian.PutUint64(buf[32*3 - 8:], uint64(epoch))
+	return hash(buf), nil
+}
+
+// Return the number of committees in one epoch.
+func get_epoch_committee_count(active_validator_count uint64) uint64 {
+    return MaxU64(
+        1,
+        MinU64(
+            uint64(SHARD_COUNT) / uint64(SLOTS_PER_EPOCH),
+            active_validator_count / uint64(SLOTS_PER_EPOCH) / TARGET_COMMITTEE_SIZE,
+        )) * uint64(SLOTS_PER_EPOCH)
+}
+
 
 type CrosslinkCommittee struct {
 	Committee []ValidatorIndex
@@ -906,59 +995,80 @@ type CrosslinkCommittee struct {
 //
 // Note: There are two possible shufflings for crosslink committees for a
 //  slot in the next epoch -- with and without a registryChange
-func get_crosslink_committees_at_slot(state *BeaconState, slot Slot, registryChange bool) []CrosslinkCommittee {
-	/* TODO port to Go
-    epoch = slot_to_epoch(slot)
-    current_epoch = get_current_epoch(state)
-    previous_epoch = get_previous_epoch(state)
-    next_epoch = current_epoch + 1
+func get_crosslink_committees_at_slot(state *BeaconState, slot Slot, registryChange bool) ([]CrosslinkCommittee, error) {
+    epoch := slot.ToEpoch()
+    current_epoch := state.Epoch()
+    previous_epoch := state.PreviousEpoch()
+    next_epoch := current_epoch + 1
 
-    assert previous_epoch <= epoch <= next_epoch
+    if !(previous_epoch <= epoch && epoch <= next_epoch) {
+    	return nil, errors.New("could not retrieve crosslink committee for out of range slot")
+	}
 
-    if epoch == current_epoch:
-        committees_per_epoch = get_current_epoch_committee_count(state)
-        seed = state.current_shuffling_seed
-        shuffling_epoch = state.current_shuffling_epoch
-        shuffling_start_shard = state.current_shuffling_start_shard
-    elif epoch == previous_epoch:
-        committees_per_epoch = get_previous_epoch_committee_count(state)
-        seed = state.previous_shuffling_seed
-        shuffling_epoch = state.previous_shuffling_epoch
-        shuffling_start_shard = state.previous_shuffling_start_shard
-    elif epoch == next_epoch:
-        current_committees_per_epoch = get_current_epoch_committee_count(state)
-        committees_per_epoch = get_next_epoch_committee_count(state)
+    var committees_per_epoch uint64
+    var seed Bytes32
+    var shuffling_epoch Epoch
+    var shuffling_start_shard Shard
+    if epoch == current_epoch {
+		committees_per_epoch = get_epoch_committee_count(get_active_validator_count(state.validator_registry, current_epoch))
+		seed = state.current_shuffling_seed
+		shuffling_epoch = state.current_shuffling_epoch
+		shuffling_start_shard = state.current_shuffling_start_shard
+	} else if epoch == previous_epoch {
+		committees_per_epoch = get_epoch_committee_count(get_active_validator_count(state.validator_registry, previous_epoch))
+		seed = state.previous_shuffling_seed
+		shuffling_epoch = state.previous_shuffling_epoch
+		shuffling_start_shard = state.previous_shuffling_start_shard
+	} else if epoch == next_epoch {
+        current_committees_per_epoch := get_epoch_committee_count(get_active_validator_count(state.validator_registry, current_epoch))
+        committees_per_epoch = get_epoch_committee_count(get_active_validator_count(state.validator_registry, next_epoch))
         shuffling_epoch = next_epoch
 
-        epochs_since_last_registry_update = current_epoch - state.validator_registry_update_epoch
-        if registry_change:
-            seed = generate_seed(state, next_epoch)
-            shuffling_start_shard = (state.current_shuffling_start_shard + current_committees_per_epoch) % SHARD_COUNT
-        elif epochs_since_last_registry_update > 1 and is_power_of_two(epochs_since_last_registry_update):
-            seed = generate_seed(state, next_epoch)
+        epochs_since_last_registry_update := current_epoch - state.validator_registry_update_epoch
+        if registryChange {
+        	// ignore err, epoch is trusted
+			seed, _ = generate_seed(state, next_epoch)
+			shuffling_start_shard = (state.current_shuffling_start_shard + Shard(current_committees_per_epoch)) % SHARD_COUNT
+		} else if epochs_since_last_registry_update > 1 && is_power_of_two(uint64(epochs_since_last_registry_update)) {
+			// ignore err, epoch is trusted
+            seed, _ = generate_seed(state, next_epoch)
             shuffling_start_shard = state.current_shuffling_start_shard
-        else:
-            seed = state.current_shuffling_seed
-            shuffling_start_shard = state.current_shuffling_start_shard
-
-    shuffling = get_shuffling(
-        seed,
-        state.validator_registry,
-        shuffling_epoch,
+        } else {
+			seed = state.current_shuffling_seed
+			shuffling_start_shard = state.current_shuffling_start_shard
+		}
+	}
+    shuffling := get_shuffling(
+       seed,
+       state.validator_registry,
+       shuffling_epoch,
     )
-    offset = slot % SLOTS_PER_EPOCH
-    committees_per_slot = committees_per_epoch // SLOTS_PER_EPOCH
-    slot_start_shard = (shuffling_start_shard + committees_per_slot * offset) % SHARD_COUNT
+    offset := slot % SLOTS_PER_EPOCH
+    committees_per_slot := committees_per_epoch / uint64(SLOTS_PER_EPOCH)
+    slot_start_shard := (shuffling_start_shard + Shard(committees_per_slot) * Shard(offset)) % SHARD_COUNT
 
-    return [
-        (
-            shuffling[committees_per_slot * offset + i],
-            (slot_start_shard + i) % SHARD_COUNT,
-        )
-        for i in range(committees_per_slot)
-    ]
-	 */
-	return []CrosslinkCommittee{}
+    crosslink_committees := make([]CrosslinkCommittee, committees_per_slot)
+    for i := uint64(0); i < committees_per_slot; i++ {
+    	crosslink_committees[i] = CrosslinkCommittee{
+    		Committee: shuffling[committees_per_slot * uint64(offset) + i],
+    		Shard: (slot_start_shard + Shard(i)) % SHARD_COUNT}
+	}
+    return crosslink_committees, nil
+}
+
+// Shuffle active validators and split into crosslink committees.
+// Return a list of committees (each a list of validator indices).
+func get_shuffling(seed Bytes32, validators []Validator, epoch Epoch) [][]ValidatorIndex {
+	active_validator_indices := get_active_validator_indices(validators, epoch)
+	committee_count := get_epoch_committee_count(uint64(len(active_validator_indices)))
+	commitees := make([][]ValidatorIndex, committee_count, committee_count)
+	// TODO implement actual shuffling
+	shuffled_indices := active_validator_indices
+	committee_size := uint64(len(shuffled_indices)) / committee_count
+	for i := uint64(0); i < committee_count; i += committee_size {
+		commitees[i] = shuffled_indices[i:i+committee_size]
+	}
+	return commitees
 }
 
 // Return the block root at a recent slot.
