@@ -1176,14 +1176,9 @@ func verify_slashable_attestation(state *BeaconState, slashable_attestation *Sla
 	custody_bit_0_pubkeys := make([]BLSPubkey, 0)
 	custody_bit_1_pubkeys := make([]BLSPubkey, 0)
 	for i, validator_index := range slashable_attestation.validator_indices {
-		// TODO: we could add a check to the spec for two cases:
-		// TODO 1) An edge case:
-		//     what if the committee size is n*8 + 3, and there is an index n*8 +
-		//     The index is still valid here, and would result in an additional custody bit 0 pubkey.
-		// TODO 2) The slashable indices is one giant sorted list of numbers,
+		// The slashable indices is one giant sorted list of numbers,
 		//   bigger than the registry, causing a out-of-bounds panic for some of the indices.
-		// Implemented two checks:
-		if validator_index > ValidatorIndex(len(slashable_attestation.validator_indices)) || !is_validator_index(state, validator_index) {
+		if !is_validator_index(state, validator_index) {
 			return false
 		}
 		// Update spec, or is this acceptable? (the bitfield verify size doesn't suffice here)
