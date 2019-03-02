@@ -1226,13 +1226,9 @@ func is_double_vote(a *AttestationData, b *AttestationData) bool {
 	return a.slot.ToEpoch() == b.slot.ToEpoch()
 }
 
-// Check if a surrounds b.
+// Check if a surrounds b, i.e. source(a) < source(b) and target(a) > target(b)
 func is_surround_vote(a *AttestationData, b *AttestationData) bool {
-	sourceA := a.justified_epoch
-	sourceB := b.justified_epoch
-	targetA := a.slot.ToEpoch()
-	targetB := b.slot.ToEpoch()
-	return sourceA < sourceB && targetB < targetA
+	return a.justified_epoch < b.justified_epoch && a.slot.ToEpoch() > b.slot.ToEpoch()
 }
 
 func check_validator_index(state *BeaconState, index ValidatorIndex) error {
