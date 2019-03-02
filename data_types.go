@@ -1,6 +1,5 @@
 package beacon_challenge
 
-// uint64
 type Slot uint64
 type Epoch uint64
 type Shard uint64
@@ -8,7 +7,7 @@ type Gwei uint64
 type Timestamp uint64
 type ValidatorIndex uint64
 type DepositIndex uint64
-type BlsDomain uint64 // TODO: Rename to BLSDomain
+type BLSDomain uint64
 
 // byte arrays
 type Root [32]byte

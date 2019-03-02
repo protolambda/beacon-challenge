@@ -60,12 +60,12 @@ const MAX_VOLUNTARY_EXITS = 1 << 4    // =  16
 const MAX_TRANSFERS = 1 << 4          // =  16
 
 // Signature domains
-const DOMAIN_DEPOSIT BlsDomain = 0
-const DOMAIN_ATTESTATION BlsDomain = 1
-const DOMAIN_PROPOSAL BlsDomain = 2
-const DOMAIN_EXIT BlsDomain = 3
-const DOMAIN_RANDAO BlsDomain = 4
-const DOMAIN_TRANSFER BlsDomain = 5
+const DOMAIN_DEPOSIT BLSDomain = 0
+const DOMAIN_ATTESTATION BLSDomain = 1
+const DOMAIN_PROPOSAL BLSDomain = 2
+const DOMAIN_EXIT BLSDomain = 3
+const DOMAIN_RANDAO BLSDomain = 4
+const DOMAIN_TRANSFER BLSDomain = 5
 
 // Custom constants for internal usage, no need to standardize
 
