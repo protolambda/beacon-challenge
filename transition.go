@@ -54,11 +54,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 		if !bls_verify(proposer.pubkey, hash_tree_root(state.Epoch()), block.randao_reveal, get_domain(state.fork, state.Epoch(), DOMAIN_RANDAO)) {
 			return errors.New("randao invalid")
 		}
-		randao_mix, err := get_randao_mix(state, state.Epoch())
-		if err != nil {
-			return err
-		}
-		state.latest_randao_mixes[state.Epoch()%LATEST_RANDAO_MIXES_LENGTH] = xorBytes32(randao_mix, hash(block.randao_reveal[:]))
+		state.latest_randao_mixes[state.Epoch()%LATEST_RANDAO_MIXES_LENGTH] = xorBytes32(get_randao_mix(state, state.Epoch()), hash(block.randao_reveal[:]))
 	}
 
 	// Eth1 data
@@ -820,9 +816,7 @@ func EpochTransition(state *BeaconState) {
 		{
 			state.latest_active_index_roots[(next_epoch+ACTIVATION_EXIT_DELAY)%LATEST_ACTIVE_INDEX_ROOTS_LENGTH] = hash_tree_root(get_active_validator_indices(state.validator_registry, next_epoch+ACTIVATION_EXIT_DELAY))
 			state.latest_slashed_balances[next_epoch%LATEST_SLASHED_EXIT_LENGTH] = state.latest_slashed_balances[current_epoch%LATEST_SLASHED_EXIT_LENGTH]
-			// err can be ignored, current_epoch is trusted.
-			randao_mix, _ := get_randao_mix(state, current_epoch)
-			state.latest_randao_mixes[next_epoch%LATEST_RANDAO_MIXES_LENGTH] = randao_mix
+			state.latest_randao_mixes[next_epoch%LATEST_RANDAO_MIXES_LENGTH] = get_randao_mix(state, current_epoch)
 			// Remove any attestation in state.latest_attestations such that slot_to_epoch(attestation.data.slot) < current_epoch
 			attests := make([]PendingAttestation, 0)
 			for _, a := range state.latest_attestations {
@@ -1040,16 +1034,12 @@ func get_active_index_root(state *BeaconState, epoch Epoch) (Root, error) {
 
 // Generate a seed for the given epoch
 func generate_seed(state *BeaconState, epoch Epoch) (Bytes32, error) {
-	randao_mix, err := get_randao_mix(state, epoch-MIN_SEED_LOOKAHEAD)
-	if err != nil {
-		return Bytes32{}, err
-	}
 	index_root, err := get_active_index_root(state, epoch)
 	if err != nil {
 		return Bytes32{}, err
 	}
 	buf := make([]byte, 32*3)
-	copy(buf[0:32], randao_mix[:])
+	copy(buf[0:32], get_randao_mix(state, epoch-MIN_SEED_LOOKAHEAD)[:])
 	copy(buf[32:32*2], index_root[:])
 	binary.LittleEndian.PutUint64(buf[32*3-8:], uint64(epoch))
 	return hash(buf), nil
@@ -1057,12 +1047,10 @@ func generate_seed(state *BeaconState, epoch Epoch) (Bytes32, error) {
 
 // Return the number of committees in one epoch.
 func get_epoch_committee_count(active_validator_count uint64) uint64 {
-	return MaxU64(
-		1,
-		MinU64(
-			uint64(SHARD_COUNT)/uint64(SLOTS_PER_EPOCH),
-			active_validator_count/uint64(SLOTS_PER_EPOCH)/TARGET_COMMITTEE_SIZE,
-		)) * uint64(SLOTS_PER_EPOCH)
+	return MaxU64(1, MinU64(
+		uint64(SHARD_COUNT)/uint64(SLOTS_PER_EPOCH),
+		active_validator_count/uint64(SLOTS_PER_EPOCH)/TARGET_COMMITTEE_SIZE,
+	)) * uint64(SLOTS_PER_EPOCH)
 }
 
 type CrosslinkCommittee struct {
@@ -1258,11 +1246,13 @@ func slash_validator(state *BeaconState, index ValidatorIndex) error {
 }
 
 //  Return the randao mix at a recent epoch
-func get_randao_mix(state *BeaconState, epoch Epoch) (Bytes32, error) {
+func get_randao_mix(state *BeaconState, epoch Epoch) Bytes32 {
+	// Every usage is a trusted input (i.e. state is already up to date to handle the requested epoch number).
+	// If something is wrong due to unforeseen usage, panic to catch it during development.
 	if !(state.Epoch()-LATEST_RANDAO_MIXES_LENGTH < epoch && epoch <= state.Epoch()) {
-		return Bytes32{}, errors.New("cannot get randao mix for out-of-bounds epoch")
+		panic("cannot get randao mix for out-of-bounds epoch")
 	}
-	return state.latest_randao_mixes[epoch%LATEST_RANDAO_MIXES_LENGTH], nil
+	return state.latest_randao_mixes[epoch%LATEST_RANDAO_MIXES_LENGTH]
 }
 
 // Get the domain number that represents the fork meta and signature domain.
