@@ -116,7 +116,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			// verify the attester_slashing
 			if !(sa1.data != sa2.data &&
 				(is_double_vote(&sa1.data, &sa2.data) || is_surround_vote(&sa1.data, &sa2.data)) &&
-				verify_slashable_attestation(state, sa1) &&	verify_slashable_attestation(state, sa2)) {
+				verify_slashable_attestation(state, sa1) && verify_slashable_attestation(state, sa2)) {
 				return errors.New(fmt.Sprintf("attester slashing %d is invalid", i))
 			}
 			// keep track of effectiveness
@@ -166,7 +166,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			}
 			// Verify bitfields and aggregate signature
 			// custody bitfield is phase 0 only:
-			if attestation.aggregation_bitfield.IsZero() ||	!attestation.custody_bitfield.IsZero() {
+			if attestation.aggregation_bitfield.IsZero() || !attestation.custody_bitfield.IsZero() {
 				return errors.New(fmt.Sprintf("attestation %d has incorrect bitfield(s)", i))
 			}
 
@@ -351,8 +351,7 @@ func EpochTransition(state *BeaconState) {
 		participants, _ := get_attestation_participants(state, &att.data, &att.aggregation_bitfield)
 		for _, participant := range participants {
 			if att.data.slot.ToEpoch() == previous_epoch {
-				if existingIndex, ok := previous_epoch_earliest_attestations[participant];
-					!ok || state.latest_attestations[existingIndex].inclusion_slot < att.inclusion_slot {
+				if existingIndex, ok := previous_epoch_earliest_attestations[participant]; !ok || state.latest_attestations[existingIndex].inclusion_slot < att.inclusion_slot {
 					previous_epoch_earliest_attestations[participant] = uint64(i)
 				}
 			}
@@ -485,10 +484,9 @@ func EpochTransition(state *BeaconState) {
 				// First look at all attestations, and sum the weights per root.
 				weightedCrosslinks := make(map[Root]Gwei)
 				for _, att := range state.latest_attestations {
-					if ep := att.data.slot.ToEpoch();
-						ep == previous_epoch || ep == current_epoch &&
-							att.data.shard == cross_comm.Shard &&
-							att.data.crosslink_data_root == crosslink_data_root {
+					if ep := att.data.slot.ToEpoch(); ep == previous_epoch || ep == current_epoch &&
+						att.data.shard == cross_comm.Shard &&
+						att.data.crosslink_data_root == crosslink_data_root {
 						// error ignored, attestation is trusted.
 						participants, _ := get_attestation_participants(state, &att.data, &att.aggregation_bitfield)
 						for _, participant := range participants {
@@ -516,10 +514,9 @@ func EpochTransition(state *BeaconState) {
 				// we need to remember attesters of winning root (for later rewarding, and exclusion to slashing)
 				winning_attesting_committee_members := make(ValidatorIndexSet, 0)
 				for _, att := range state.latest_attestations {
-					if ep := att.data.slot.ToEpoch();
-						ep == previous_epoch || ep == current_epoch &&
-							att.data.shard == cross_comm.Shard &&
-							att.data.crosslink_data_root == winning_root {
+					if ep := att.data.slot.ToEpoch(); ep == previous_epoch || ep == current_epoch &&
+						att.data.shard == cross_comm.Shard &&
+						att.data.crosslink_data_root == winning_root {
 						// error ignored, attestation is trusted.
 						participants, _ := get_attestation_participants(state, &att.data, &att.aggregation_bitfield)
 						for _, participant := range participants {
@@ -1088,9 +1085,9 @@ func verify_slashable_attestation(state *BeaconState, slashable_attestation *Sla
 	// TODO Moved condition to top, compared to spec. Data can be way too big, get rid of that ASAP.
 	if len(slashable_attestation.validator_indices) == 0 ||
 		len(slashable_attestation.validator_indices) > MAX_INDICES_PER_SLASHABLE_VOTE ||
-	// [TO BE REMOVED IN PHASE 1]
+		// [TO BE REMOVED IN PHASE 1]
 		!slashable_attestation.custody_bitfield.IsZero() ||
-	// verify the size of the bitfield: it must have exactly enough bits for the given amount of validators.
+		// verify the size of the bitfield: it must have exactly enough bits for the given amount of validators.
 		!slashable_attestation.custody_bitfield.verifySize(uint64(len(slashable_attestation.validator_indices))) {
 		return false
 	}

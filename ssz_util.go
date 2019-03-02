@@ -178,8 +178,8 @@ func sszPack(input reflect.Value) []Bytes32 {
 	return out
 }
 
-func sszMixInLength(data Root, length uint64) (out Root) {
-	// hacky to use out as temporary buffer, but need it for line count
-	binary.LittleEndian.PutUint64(out[:], length)
-	return merkle_root([]Bytes32{Bytes32(data), Bytes32(out)})
+func sszMixInLength(data Root, length uint64) Root {
+	lengthInput := Bytes32{}
+	binary.LittleEndian.PutUint64(lengthInput[:], length)
+	return merkle_root([]Bytes32{Bytes32(data), lengthInput})
 }
