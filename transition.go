@@ -668,9 +668,8 @@ func EpochTransition(state *BeaconState) {
 					applyRewardOrSlash(previous_active_validator_indices, false, func(index ValidatorIndex) Gwei {
 						if state.validator_registry[index].slashed {
 							return (2 * inactivity_penalty(index)) + base_reward(index)
-						} else {
-							return 0
 						}
+						return 0
 					})
 				}
 
@@ -766,14 +765,14 @@ func EpochTransition(state *BeaconState) {
 					committee_count := get_epoch_committee_count(get_active_validator_count(state.validator_registry, current_epoch))
 					state.current_shuffling_start_shard = (state.current_shuffling_start_shard + Shard(committee_count)) % SHARD_COUNT
 					// ignore error, current_shuffling_epoch is a trusted input
-					state.current_shuffling_seed, _ = generate_seed(state, state.current_shuffling_epoch)
+					state.current_shuffling_seed = generate_seed(state, state.current_shuffling_epoch)
 				} else {
 					// If a validator registry update does not happen:
 					epochs_since_last_registry_update := current_epoch - state.validator_registry_update_epoch
 					if epochs_since_last_registry_update > 1 && is_power_of_two(uint64(epochs_since_last_registry_update)) {
 						state.current_shuffling_epoch = next_epoch
 						// Note that state.current_shuffling_start_shard is left unchanged
-						state.current_shuffling_seed, _ = generate_seed(state, state.current_shuffling_epoch)
+						state.current_shuffling_seed = generate_seed(state, state.current_shuffling_epoch)
 					}
 				}
 			}
@@ -792,10 +791,7 @@ func EpochTransition(state *BeaconState) {
 					total_at_end := state.latest_slashed_balances[epoch_index]
 					total_penalties := total_at_end - total_at_start
 					balance := get_effective_balance(state, ValidatorIndex(index))
-					penalty := Max(
-						balance*Min(total_penalties*3, total_balance)/total_balance,
-						balance/MIN_PENALTY_QUOTIENT)
-					state.validator_balances[index] -= penalty
+					state.validator_balances[index] -= Max(balance*Min(total_penalties*3, total_balance)/total_balance, balance/MIN_PENALTY_QUOTIENT)
 				}
 			}
 		}
@@ -1034,25 +1030,14 @@ func get_attestation_participants(state *BeaconState, attestation_data *Attestat
 	return participants, nil
 }
 
-// Return the index root at a recent epoch
-func get_active_index_root(state *BeaconState, epoch Epoch) (Root, error) {
-	if !(state.Epoch()-LATEST_ACTIVE_INDEX_ROOTS_LENGTH+ACTIVATION_EXIT_DELAY < epoch && epoch <= state.Epoch()+ACTIVATION_EXIT_DELAY) {
-		return Root{}, errors.New("cannot get active index root, out of bounds")
-	}
-	return state.latest_active_index_roots[epoch%LATEST_ACTIVE_INDEX_ROOTS_LENGTH], nil
-}
-
 // Generate a seed for the given epoch
-func generate_seed(state *BeaconState, epoch Epoch) (Bytes32, error) {
-	index_root, err := get_active_index_root(state, epoch)
-	if err != nil {
-		return Bytes32{}, err
-	}
+func generate_seed(state *BeaconState, epoch Epoch) Bytes32 {
 	buf := make([]byte, 32*3)
 	copy(buf[0:32], get_randao_mix(state, epoch-MIN_SEED_LOOKAHEAD)[:])
-	copy(buf[32:32*2], index_root[:])
+	// get_active_index_root in spec, but only used once, and the assertion is unnecessary, since epoch input is always trusted
+	copy(buf[32:32*2], state.latest_active_index_roots[epoch%LATEST_ACTIVE_INDEX_ROOTS_LENGTH][:])
 	binary.LittleEndian.PutUint64(buf[32*3-8:], uint64(epoch))
-	return hash(buf), nil
+	return hash(buf)
 }
 
 // Return the number of committees in one epoch.
@@ -1103,12 +1088,10 @@ func get_crosslink_committees_at_slot(state *BeaconState, slot Slot, registryCha
 
 		epochs_since_last_registry_update := current_epoch - state.validator_registry_update_epoch
 		if registryChange {
-			// ignore err, epoch is trusted
-			seed, _ = generate_seed(state, next_epoch)
+			seed = generate_seed(state, next_epoch)
 			shuffling_start_shard = (state.current_shuffling_start_shard + Shard(current_committees_per_epoch)) % SHARD_COUNT
 		} else if epochs_since_last_registry_update > 1 && is_power_of_two(uint64(epochs_since_last_registry_update)) {
-			// ignore err, epoch is trusted
-			seed, _ = generate_seed(state, next_epoch)
+			seed = generate_seed(state, next_epoch)
 			shuffling_start_shard = state.current_shuffling_start_shard
 		} else {
 			seed = state.current_shuffling_seed
