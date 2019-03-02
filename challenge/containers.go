@@ -1,4 +1,4 @@
-package beacon_challenge
+package challenge
 
 type BeaconBlock struct {
 	// Header

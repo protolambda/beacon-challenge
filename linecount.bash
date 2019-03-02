@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-gofilesStr=$(find ./ -name '*.go' |tr "\n" " ")
+gofilesStr=$(find ./challenge/ -name '*.go' |tr "\n" " ")
 
 gofiles=($gofilesStr)
 

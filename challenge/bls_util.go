@@ -1,4 +1,4 @@
-package beacon_challenge
+package challenge
 
 func bls_verify(pubkey BLSPubkey, message_hash Root, signature BLSSignature, domain BLSDomain) bool {
 	// TODO BLS verify single

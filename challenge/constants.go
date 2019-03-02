@@ -1,4 +1,4 @@
-package beacon_challenge
+package challenge
 
 // Misc.
 const SHARD_COUNT Shard = 1 << 10         // =  1,024

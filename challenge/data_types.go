@@ -1,4 +1,4 @@
-package beacon_challenge
+package challenge
 
 type Slot uint64
 type Epoch uint64

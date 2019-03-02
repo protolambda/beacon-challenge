@@ -1,4 +1,4 @@
-package beacon_challenge
+package challenge
 
 func Max(a Gwei, b Gwei) Gwei {
 	return Gwei(MaxU64(uint64(a), uint64(b)))
