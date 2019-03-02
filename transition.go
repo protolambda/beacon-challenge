@@ -7,13 +7,20 @@ import (
 	"sort"
 )
 
-// interface required by Justin Drake for challenge.
+// StateTransition interface required by Justin Drake for challenge.
+
+// transition requirement: the pre-state latest_blocks[parent block's slot] should be loaded with the root of the parent block.
 func StateTransition(preState *BeaconState, block *BeaconBlock) (res *BeaconState, err error) {
 	if preState.slot >= block.slot {
 		return nil, errors.New("cannot handle block on top of pre-state with equal or higher slot than block")
 	}
 	// We work on a copy of the input state. If the block is invalid, or input is re-used, we don't have to care.
 	state := preState.Copy()
+	// Verified earlier, before calling StateTransition:
+	// > The parent block with root `block.parent_root` has been processed and accepted
+	// Hence, we can update latest block roots with the parent block root,
+	//  at the slot of the state we left of (that of the parent block)
+	state.latest_block_roots[preState.slot%LATEST_BLOCK_ROOTS_LENGTH] = block.parent_root
 	// happens at the start of every slot
 	for i := state.slot; i <= block.slot; i++ {
 		SlotTransition(state)
@@ -30,8 +37,6 @@ func StateTransition(preState *BeaconState, block *BeaconBlock) (res *BeaconStat
 	if block.state_root != hash_tree_root(state) {
 		return nil, errors.New("block has invalid state root")
 	}
-	// For the next time we use this state. (used in per-slot processing)
-	state.latest_block_roots[state.slot%LATEST_BLOCK_ROOTS_LENGTH] = hash_tree_root(block)
 	return state, nil
 }
 
