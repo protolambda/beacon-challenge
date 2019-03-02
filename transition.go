@@ -16,14 +16,12 @@ func StateTransition(preState *BeaconState, block *BeaconBlock) (res *BeaconStat
 	}
 	// We work on a copy of the input state. If the block is invalid, or input is re-used, we don't have to care.
 	state := preState.Copy()
-	// Verified earlier, before calling StateTransition:
-	// > The parent block with root `block.parent_root` has been processed and accepted
-	// Hence, we can update latest block roots with the parent block root,
-	//  at the slot of the state we left of (that of the parent block)
-	state.latest_block_roots[preState.slot%LATEST_BLOCK_ROOTS_LENGTH] = block.parent_root
 	// happens at the start of every slot
 	for i := state.slot; i <= block.slot; i++ {
-		SlotTransition(state)
+		// Verified earlier, before calling StateTransition:
+		// > The parent block with root `block.parent_root` has been processed and accepted
+		// Hence, we can update latest block roots with the parent block root
+		SlotTransition(state, block.parent_root)
 	}
 	// happens at every block
 	if err := ApplyBlock(state, block); err != nil {
@@ -335,11 +333,11 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 	return nil
 }
 
-func SlotTransition(state *BeaconState) {
+// Let previous_block_root be the hash_tree_root of the previous beacon block processed in the chain.
+func SlotTransition(state *BeaconState, previous_block_root Root) {
 	state.slot += 1
 
-	// Copy over last block from state
-	state.latest_block_roots[(state.slot)%LATEST_BLOCK_ROOTS_LENGTH] = state.latest_block_roots[(state.slot-1)%LATEST_BLOCK_ROOTS_LENGTH]
+	state.latest_block_roots[(state.slot-1)%LATEST_BLOCK_ROOTS_LENGTH] = previous_block_root
 	if state.slot%LATEST_BLOCK_ROOTS_LENGTH == 0 {
 		// yes, this is ugly, typing requires us to be explict when we want to merkleize a list of non-bytes32 items.
 		merkle_input := make([]Bytes32, len(state.latest_block_roots))
