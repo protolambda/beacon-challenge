@@ -83,8 +83,8 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			return errors.New("too many proposer slashings")
 		}
 		for i, proposer_slashing := range block.body.proposer_slashings {
-			if err := check_validator_index(state, proposer_slashing.proposer_index); err != nil {
-				return err
+			if !is_validator_index(state, proposer_slashing.proposer_index) {
+				return errors.New("invalid proposer index")
 			}
 			proposer := state.validator_registry[proposer_slashing.proposer_index]
 			if !(proposer_slashing.proposal_1.slot == proposer_slashing.proposal_2.slot &&
@@ -1183,8 +1183,7 @@ func verify_slashable_attestation(state *BeaconState, slashable_attestation *Sla
 		// TODO 2) The slashable indices is one giant sorted list of numbers,
 		//   bigger than the registry, causing a out-of-bounds panic for some of the indices.
 		// Implemented two checks:
-		if validator_index > ValidatorIndex(len(slashable_attestation.validator_indices)) ||
-			check_validator_index(state, validator_index) != nil {
+		if validator_index > ValidatorIndex(len(slashable_attestation.validator_indices)) || !is_validator_index(state, validator_index) {
 			return false
 		}
 		// Update spec, or is this acceptable? (the bitfield verify size doesn't suffice here)
@@ -1219,11 +1218,8 @@ func is_surround_vote(a *AttestationData, b *AttestationData) bool {
 	return a.justified_epoch < b.justified_epoch && a.slot.ToEpoch() > b.slot.ToEpoch()
 }
 
-func check_validator_index(state *BeaconState, index ValidatorIndex) error {
-	if index > ValidatorIndex(len(state.validator_registry)) {
-		return errors.New("validator index is unknown, too high")
-	}
-	return nil
+func is_validator_index(state *BeaconState, index ValidatorIndex) bool {
+	return index < ValidatorIndex(len(state.validator_registry))
 }
 
 // Slash the validator with index index.
