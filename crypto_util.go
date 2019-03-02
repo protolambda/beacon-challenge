@@ -7,11 +7,8 @@ import "crypto/sha256"
 func merkle_root(values []Bytes32) Root {
 	o := make([]Bytes32, len(values)*2)
 	copy(o[len(values):], values)
-	buf := make([]byte, 64, 64)
 	for i := len(values) - 1; i >= 0; i-- {
-		copy(buf[:32], o[i*2][:])
-		copy(buf[32:], o[i*2+1][:])
-		o[i] = hash(buf)
+		o[i] = hash(append(o[i*2][:], o[i*2+1][:]...)
 	}
 	return Root(o[1])
 }
