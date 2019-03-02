@@ -334,7 +334,12 @@ func SlotTransition(state *BeaconState) {
 	// Let previous_block_root be the hash_tree_root of the previous beacon block processed in the chain.
 	state.latest_block_roots[(state.slot-1)%LATEST_BLOCK_ROOTS_LENGTH] = state.latest_block_roots[(state.slot-2)%LATEST_BLOCK_ROOTS_LENGTH]
 	if state.slot%LATEST_BLOCK_ROOTS_LENGTH == 0 {
-		state.batched_block_roots = append(state.batched_block_roots, merkle_root(state.latest_block_roots))
+		// yes, this is ugly, typing requires us to be explict when we want to merkleize a list of non-bytes32 items.
+		merkle_input := make([]Bytes32, len(state.latest_block_roots))
+		for i := 0; i < len(state.latest_block_roots); i++ {
+			merkle_input[i] = Bytes32(state.latest_block_roots[i])
+		}
+		state.batched_block_roots = append(state.batched_block_roots, merkle_root(merkle_input))
 	}
 }
 
