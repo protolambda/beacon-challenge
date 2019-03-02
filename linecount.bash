@@ -17,7 +17,7 @@ do
         continue
     fi
     BRACKETS=`cat "$i" | grep --extended-regexp "^\s*(\{|\}|\(|\))\s*$" | wc -l`
-    COMMENTS=`cat "$i" | grep --extended-regexp "\s*//.+$" | wc -l`
+    COMMENTS=`cat "$i" | grep --extended-regexp "^\s*//.+$" | wc -l`
     BLANKS=`cat "$i" | grep --extended-regexp "^$" | wc -l`
     FULL=`cat "$i" | wc -l`
     NOT_COUNTING=$(($BRACKETS + $COMMENTS + $BLANKS))
