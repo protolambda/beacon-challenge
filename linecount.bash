@@ -13,7 +13,7 @@ printf "file                        brackets         comments        blanks     
 TOTAL_COUNT=0
 for i in "${gofiles[@]}"
 do
-    if  [[ "$i" == "./bls_util.go" ]]; then
+    if  [[ "$i" == *"bls_util.go" ]]; then
         continue
     fi
     BRACKETS=`cat "$i" | grep --extended-regexp "^\s*(\{|\}|\(|\))\s*$" | wc -l`
