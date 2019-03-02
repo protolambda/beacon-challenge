@@ -189,9 +189,9 @@ type BeaconState struct {
 	latest_block_roots        [LATEST_BLOCK_ROOTS_LENGTH]Root
 	latest_active_index_roots [LATEST_ACTIVE_INDEX_ROOTS_LENGTH]Root
 	// Balances slashed at every withdrawal period
-	latest_slashed_balances   [LATEST_SLASHED_EXIT_LENGTH]Gwei
-	latest_attestations       []PendingAttestation
-	batched_block_roots       []Root
+	latest_slashed_balances [LATEST_SLASHED_EXIT_LENGTH]Gwei
+	latest_attestations     []PendingAttestation
+	batched_block_roots     []Root
 
 	// Ethereum 1.0 chain data
 	latest_eth1_data Eth1Data
@@ -277,9 +277,8 @@ type Fork struct {
 func (f Fork) GetVersion(epoch Epoch) uint64 {
 	if epoch < f.epoch {
 		return f.previous_version
-	} else {
-		return f.current_version
 	}
+	return f.current_version
 }
 
 type Eth1Data struct {

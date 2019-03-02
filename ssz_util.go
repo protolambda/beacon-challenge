@@ -71,10 +71,10 @@ func sszSerialize(v reflect.Value, dst *[]byte) (encodedLen uint32) {
 		s, _ := withSize(dst, 1)
 		(*dst)[s] = byte(v.Uint())
 		return 1
-	// Commented, not really used in spec.
-	//case reflect.Uint32: // "uintN"
-	//	s, e := withSize(dst, 4)
-	//	binary.LittleEndian.PutUint32((*dst)[s:e], uint32(v.Uint()))
+		// Commented, not really used in spec.
+		//case reflect.Uint32: // "uintN"
+		//	s, e := withSize(dst, 4)
+		//	binary.LittleEndian.PutUint32((*dst)[s:e], uint32(v.Uint()))
 		return 4
 	case reflect.Uint64: // "uintN"
 		s, e := withSize(dst, 8)
@@ -85,7 +85,7 @@ func sszSerialize(v reflect.Value, dst *[]byte) (encodedLen uint32) {
 		if v.Bool() {
 			(*dst)[s] = 1
 		} else {
-			(*dst)[s] = 1
+			(*dst)[s] = 0
 		}
 		return 1
 	case reflect.Array: // "tuple"
@@ -97,15 +97,16 @@ func sszSerialize(v reflect.Value, dst *[]byte) (encodedLen uint32) {
 			encodedLen += serializedSize
 		}
 		return encodedLen
-	case reflect.Slice: // "list"
-		for i, size := 0, v.Len(); i < size; i++ {
-			// allocate size prefix: BYTES_PER_LENGTH_PREFIX
-			s, e := withSize(dst, 4)
-			serializedSize := sszSerialize(v.Index(i), dst)
-			binary.LittleEndian.PutUint32((*dst)[s:e], serializedSize)
-			encodedLen += 4 + serializedSize
-		}
-		return encodedLen
+	// Not used in the spec currently, free lines for challenge ;)
+	//case reflect.Slice: // "list"
+	//	for i, size := 0, v.Len(); i < size; i++ {
+	//		// allocate size prefix: BYTES_PER_LENGTH_PREFIX
+	//		s, e := withSize(dst, 4)
+	//		serializedSize := sszSerialize(v.Index(i), dst)
+	//		binary.LittleEndian.PutUint32((*dst)[s:e], serializedSize)
+	//		encodedLen += 4 + serializedSize
+	//	}
+	//	return encodedLen
 	case reflect.Struct: // "container"
 		for i, size := 0, v.NumField(); i < size; i++ {
 			// allocate size prefix: BYTES_PER_LENGTH_PREFIX
@@ -124,11 +125,10 @@ func hash_tree_root(input interface{}) Root {
 	return sszHashTreeRoot(reflect.ValueOf(input))
 }
 
-/*
-TODO: see specs #679, comment.
-Implementation here simply assumes fixed-length arrays only have elements of fixed-length.
- */
+// TODO: see specs #679, comment.
+// Implementation here simply assumes fixed-length arrays only have elements of fixed-length.
 
+// Compute hash tree root for a value
 func sszHashTreeRoot(v reflect.Value) Root {
 	switch v.Kind() {
 	case reflect.Ptr:
@@ -143,12 +143,11 @@ func sszHashTreeRoot(v reflect.Value) Root {
 			return sszMixInLength(merkle_root(sszPack(v)), uint64(v.Len()))
 		// Interpretation: list of composite / var-size (i.e. the non-basic) objects
 		default:
-			length := v.Len()
-			data := make([]Bytes32, length)
-			for i := 0; i < length; i++ {
+			data := make([]Bytes32, v.Len())
+			for i := 0; i < v.Len(); i++ {
 				data[i] = Bytes32(sszHashTreeRoot(v.Index(i)))
 			}
-			return sszMixInLength(merkle_root(data), uint64(length))
+			return sszMixInLength(merkle_root(data), uint64(v.Len()))
 		}
 	// Interpretation: container, similar to list of complex objects, but without length prefix.
 	case reflect.Struct:
@@ -179,8 +178,8 @@ func sszPack(input reflect.Value) []Bytes32 {
 	return out
 }
 
-func sszMixInLength(data Root, length uint64) Root {
-	lengthInput := Bytes32{}
-	binary.LittleEndian.PutUint64(lengthInput[:], length)
-	return merkle_root([]Bytes32{Bytes32(data), lengthInput})
+func sszMixInLength(data Root, length uint64) (out Root) {
+	// hacky to use out as temporary buffer, but need it for line count
+	binary.LittleEndian.PutUint64(out[:], length)
+	return merkle_root([]Bytes32{Bytes32(data), Bytes32(out)})
 }

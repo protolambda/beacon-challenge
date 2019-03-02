@@ -112,14 +112,11 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			return errors.New("too many attester slashings")
 		}
 		for i, attester_slashing := range block.body.attester_slashings {
-			slashable_attestation_1 := &attester_slashing.slashable_attestation_1
-			slashable_attestation_2 := &attester_slashing.slashable_attestation_2
+			sa1, sa2 := &attester_slashing.slashable_attestation_1, &attester_slashing.slashable_attestation_2
 			// verify the attester_slashing
-			if !(slashable_attestation_1.data != slashable_attestation_2.data &&
-				(is_double_vote(&slashable_attestation_1.data, &slashable_attestation_2.data) ||
-					is_surround_vote(&slashable_attestation_1.data, &slashable_attestation_2.data)) &&
-				verify_slashable_attestation(state, slashable_attestation_1) &&
-				verify_slashable_attestation(state, slashable_attestation_2)) {
+			if !(sa1.data != sa2.data &&
+				(is_double_vote(&sa1.data, &sa2.data) || is_surround_vote(&sa1.data, &sa2.data)) &&
+				verify_slashable_attestation(state, sa1) &&	verify_slashable_attestation(state, sa2)) {
 				return errors.New(fmt.Sprintf("attester slashing %d is invalid", i))
 			}
 			// keep track of effectiveness
@@ -127,8 +124,8 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			// run slashings where applicable
 		ValLoop:
 			// indices are trusted, they have been verified by verify_slashable_attestation(...)
-			for _, v1 := range slashable_attestation_1.validator_indices {
-				for _, v2 := range slashable_attestation_2.validator_indices {
+			for _, v1 := range sa1.validator_indices {
+				for _, v2 := range sa2.validator_indices {
 					if v1 == v2 && !state.validator_registry[v1].slashed {
 						if err := slash_validator(state, v1); err != nil {
 							return err
@@ -168,14 +165,9 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 				return errors.New(fmt.Sprintf("attestation %d is not valid", i))
 			}
 			// Verify bitfields and aggregate signature
-
-			// phase 0 only:
-			if !attestation.custody_bitfield.IsZero() {
-				return errors.New(fmt.Sprintf("attestation %d has non-zero custody bitfield, illegal in phase 0", i))
-			}
-
-			if attestation.aggregation_bitfield.IsZero() {
-				return errors.New(fmt.Sprintf("attestation %d has zeroed aggregation bitfield, not valid", i))
+			// custody bitfield is phase 0 only:
+			if attestation.aggregation_bitfield.IsZero() ||	!attestation.custody_bitfield.IsZero() {
+				return errors.New(fmt.Sprintf("attestation %d has incorrect bitfield(s)", i))
 			}
 
 			crosslink_committees, err := get_crosslink_committees_at_slot(state, attestation.data.slot, false)
@@ -311,15 +303,14 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			withdrawCred[31] = BLS_WITHDRAWAL_PREFIX_BYTE
 			copy(withdrawCred[1:], hash(transfer.pubkey[:])[1:])
 			// verify transfer data + signature. No separate error messages for line limit challenge...
-			if !(
-				state.validator_balances[transfer.from] >= transfer.amount &&
-					state.validator_balances[transfer.from] >= transfer.fee &&
-					((state.validator_balances[transfer.from] == transfer.amount+transfer.fee) ||
-						(state.validator_balances[transfer.from] >= transfer.amount+transfer.fee+MIN_DEPOSIT_AMOUNT)) &&
-					state.slot == transfer.slot &&
-					(state.Epoch() >= state.validator_registry[transfer.from].withdrawable_epoch || state.validator_registry[transfer.from].activation_epoch == FAR_FUTURE_EPOCH) &&
-					state.validator_registry[transfer.from].withdrawal_credentials == withdrawCred &&
-					bls_verify(transfer.pubkey, signed_root(transfer, "signature"), transfer.signature, get_domain(state.fork, transfer.slot.ToEpoch(), DOMAIN_TRANSFER))) {
+			if !(state.validator_balances[transfer.from] >= transfer.amount &&
+				state.validator_balances[transfer.from] >= transfer.fee &&
+				((state.validator_balances[transfer.from] == transfer.amount+transfer.fee) ||
+					(state.validator_balances[transfer.from] >= transfer.amount+transfer.fee+MIN_DEPOSIT_AMOUNT)) &&
+				state.slot == transfer.slot &&
+				(state.Epoch() >= state.validator_registry[transfer.from].withdrawable_epoch || state.validator_registry[transfer.from].activation_epoch == FAR_FUTURE_EPOCH) &&
+				state.validator_registry[transfer.from].withdrawal_credentials == withdrawCred &&
+				bls_verify(transfer.pubkey, signed_root(transfer, "signature"), transfer.signature, get_domain(state.fork, transfer.slot.ToEpoch(), DOMAIN_TRANSFER))) {
 				return errors.New(fmt.Sprintf("transfer %d is invalid", i))
 			}
 			state.validator_balances[transfer.from] -= transfer.amount + transfer.fee
@@ -349,31 +340,22 @@ func SlotTransition(state *BeaconState, previous_block_root Root) {
 }
 
 func EpochTransition(state *BeaconState) {
-	current_epoch := state.Epoch()
-	previous_epoch := state.Epoch()
+	current_epoch, previous_epoch := state.Epoch(), state.PreviousEpoch()
 	next_epoch := current_epoch + 1
 
 	// attestation-source-index for a given epoch, by validator index.
 	// The earliest attestation (by inclusion_slot) is referenced in this map.
 	previous_epoch_earliest_attestations := make(map[ValidatorIndex]uint64)
-	//current_epoch_earliest_attestations := make(map[ValidatorIndex]uint64)
 	for i, att := range state.latest_attestations {
-		ep := att.data.slot.ToEpoch()
 		// error ignored, attestation is trusted.
 		participants, _ := get_attestation_participants(state, &att.data, &att.aggregation_bitfield)
 		for _, participant := range participants {
-			if ep == previous_epoch {
+			if att.data.slot.ToEpoch() == previous_epoch {
 				if existingIndex, ok := previous_epoch_earliest_attestations[participant];
 					!ok || state.latest_attestations[existingIndex].inclusion_slot < att.inclusion_slot {
 					previous_epoch_earliest_attestations[participant] = uint64(i)
 				}
 			}
-			//if ep == current_epoch {
-			//	if existingIndex, ok := current_epoch_attestations[participant];
-			//		!ok || state.latest_attestations[existingIndex].inclusion_slot < att.inclusion_slot {
-			//		current_epoch_attestations[participant] = uint64(i)
-			//	}
-			//}
 		}
 	}
 
@@ -407,8 +389,7 @@ func EpochTransition(state *BeaconState) {
 	previous_epoch_head_attester_indices := make(ValidatorIndexSet, 0)
 	current_epoch_boundary_attester_indices := make(ValidatorIndexSet, 0)
 	for _, att := range state.latest_attestations {
-		ep := att.data.slot.ToEpoch()
-		if ep == previous_epoch {
+		if ep := att.data.slot.ToEpoch(); ep == previous_epoch {
 
 			boundary_block_root, err := get_block_root(state, previous_epoch.GetStartSlot())
 			isForBoundary := err == nil && att.data.epoch_boundary_root == boundary_block_root
@@ -489,8 +470,7 @@ func EpochTransition(state *BeaconState) {
 	// Crosslinks
 	{
 
-		start := previous_epoch.GetStartSlot()
-		end := next_epoch.GetStartSlot()
+		start, end := previous_epoch.GetStartSlot(), next_epoch.GetStartSlot()
 		for slot := start; slot < end; slot++ {
 			// epoch is trusted, ignore error
 			crosslink_committees_at_slot, _ := get_crosslink_committees_at_slot(state, slot, false)
@@ -688,8 +668,7 @@ func EpochTransition(state *BeaconState) {
 			// Attestations should be included timely.
 			// TODO Difference from spec: it is easier (and faster) to iterate through the precomputed map
 			for attester_index, att_index := range previous_epoch_earliest_attestations {
-				inclusion_slot := state.latest_attestations[att_index].inclusion_slot
-				proposer_index := get_beacon_proposer_index(state, inclusion_slot)
+				proposer_index := get_beacon_proposer_index(state, state.latest_attestations[att_index].inclusion_slot)
 				state.validator_balances[proposer_index] += base_reward(attester_index) / ATTESTATION_INCLUSION_REWARD_QUOTIENT
 			}
 		}
@@ -697,8 +676,7 @@ func EpochTransition(state *BeaconState) {
 		// > Crosslinks
 		{
 			// Crosslinks should be created by the committees
-			start := previous_epoch.GetStartSlot()
-			end := next_epoch.GetStartSlot()
+			start, end := previous_epoch.GetStartSlot(), next_epoch.GetStartSlot()
 			for slot := start; slot < end; slot++ {
 				// epoch is trusted, ignore error
 				crosslink_committees_at_slot, _ := get_crosslink_committees_at_slot(state, slot, false)
@@ -789,9 +767,8 @@ func EpochTransition(state *BeaconState) {
 					epoch_index := current_epoch % LATEST_SLASHED_EXIT_LENGTH
 					total_at_start := state.latest_slashed_balances[(epoch_index+1)%LATEST_SLASHED_EXIT_LENGTH]
 					total_at_end := state.latest_slashed_balances[epoch_index]
-					total_penalties := total_at_end - total_at_start
 					balance := get_effective_balance(state, ValidatorIndex(index))
-					state.validator_balances[index] -= Max(balance*Min(total_penalties*3, total_balance)/total_balance, balance/MIN_PENALTY_QUOTIENT)
+					state.validator_balances[index] -= Max(balance*Min((total_at_end-total_at_start)*3, total_balance)/total_balance, balance/MIN_PENALTY_QUOTIENT)
 				}
 			}
 		}
@@ -810,11 +787,8 @@ func EpochTransition(state *BeaconState) {
 				return state.validator_registry[eligible_indices[i]].exit_epoch < state.validator_registry[eligible_indices[j]].exit_epoch
 			})
 			// eligible_indices is sorted here (in-place sorting)
-			for dequeues, vIndex := range eligible_indices {
-				if dequeues >= MAX_EXIT_DEQUEUES_PER_EPOCH {
-					break
-				}
-				prepare_validator_for_withdrawal(state, vIndex)
+			for i, end := uint64(0), uint64(len(eligible_indices)); i < MAX_EXIT_DEQUEUES_PER_EPOCH && i < end; i++ {
+				prepare_validator_for_withdrawal(state, eligible_indices[i])
 			}
 		}
 
@@ -839,8 +813,7 @@ func EpochTransition(state *BeaconState) {
 // Set the validator with the given index as withdrawable
 // MIN_VALIDATOR_WITHDRAWABILITY_DELAY after the current epoch.
 func prepare_validator_for_withdrawal(state *BeaconState, index ValidatorIndex) {
-	validator := &state.validator_registry[index]
-	validator.withdrawable_epoch = state.Epoch() + MIN_VALIDATOR_WITHDRAWABILITY_DELAY
+	state.validator_registry[index].withdrawable_epoch = state.Epoch() + MIN_VALIDATOR_WITHDRAWABILITY_DELAY
 }
 
 // Return the epoch at which an activation or exit triggered in epoch takes effect.
@@ -851,7 +824,6 @@ func get_delayed_activation_exit_epoch(epoch Epoch) Epoch {
 // Exit the validator of the given index
 func exit_validator(state *BeaconState, index ValidatorIndex) {
 	validator := &state.validator_registry[index]
-
 	delayed_activation_exit_epoch := get_delayed_activation_exit_epoch(state.Epoch())
 	// The following updates only occur if not previous exited
 	if validator.exit_epoch > delayed_activation_exit_epoch {
@@ -862,8 +834,7 @@ func exit_validator(state *BeaconState, index ValidatorIndex) {
 
 // Initiate the validator of the given index
 func initiate_validator_exit(state *BeaconState, index ValidatorIndex) {
-	validator := &state.validator_registry[index]
-	validator.initiated_exit = true
+	state.validator_registry[index].initiated_exit = true
 }
 
 func get_active_validator_count(validator_registry []Validator, epoch Epoch) (count uint64) {
@@ -902,16 +873,7 @@ func get_total_balance(state *BeaconState, indices []ValidatorIndex) (sum Gwei) 
 func process_deposit(state *BeaconState, dep *Deposit) error {
 	deposit_input := &dep.deposit_data.deposit_input
 
-	proof_is_valid := bls_verify(
-		deposit_input.pubkey,
-		signed_root(deposit_input, "proof_of_possession"),
-		deposit_input.proof_of_possession,
-		get_domain(
-			state.fork,
-			state.Epoch(),
-			DOMAIN_DEPOSIT))
-
-	if !proof_is_valid {
+	if !bls_verify(deposit_input.pubkey, signed_root(deposit_input, "proof_of_possession"), deposit_input.proof_of_possession, get_domain(state.fork, state.Epoch(), DOMAIN_DEPOSIT)) {
 		// simply don't handle the deposit. (TODO: should this be an error (making block invalid)?)
 		return nil
 	}
@@ -923,31 +885,24 @@ func process_deposit(state *BeaconState, dep *Deposit) error {
 			break
 		}
 	}
-	amount := dep.deposit_data.amount
-	withdrawal_credentials := deposit_input.withdrawal_credentials
 
 	// Check if it is a known validator that is depositing ("if pubkey not in validator_pubkeys")
 	if val_index == ValidatorIndexMarker {
 		// Not a known pubkey, add new validator
 		validator := Validator{
-			pubkey:                 state.validator_registry[val_index].pubkey,
-			withdrawal_credentials: withdrawal_credentials,
-			activation_epoch:       FAR_FUTURE_EPOCH,
-			exit_epoch:             FAR_FUTURE_EPOCH,
-			withdrawable_epoch:     FAR_FUTURE_EPOCH,
-			initiated_exit:         false,
-			slashed:                false,
+			pubkey: state.validator_registry[val_index].pubkey, withdrawal_credentials: deposit_input.withdrawal_credentials,
+			activation_epoch: FAR_FUTURE_EPOCH, exit_epoch: FAR_FUTURE_EPOCH, withdrawable_epoch: FAR_FUTURE_EPOCH,
+			initiated_exit: false, slashed: false,
 		}
 		// Note: In phase 2 registry indices that have been withdrawn for a long time will be recycled.
-		state.validator_registry = append(state.validator_registry, validator)
-		state.validator_balances = append(state.validator_balances, amount)
+		state.validator_registry, state.validator_balances = append(state.validator_registry, validator), append(state.validator_balances, dep.deposit_data.amount)
 	} else {
 		// known pubkey, check withdrawal credentials first, then increase balance.
-		if state.validator_registry[val_index].withdrawal_credentials != withdrawal_credentials {
+		if state.validator_registry[val_index].withdrawal_credentials != deposit_input.withdrawal_credentials {
 			return errors.New("deposit has wrong withdrawal credentials")
 		}
 		// Increase balance by deposit amount
-		state.validator_balances[val_index] += amount
+		state.validator_balances[val_index] += dep.deposit_data.amount
 	}
 	return nil
 }
@@ -961,9 +916,7 @@ func update_validator_registry(state *BeaconState) {
 	total_balance := get_total_balance(state, active_validator_indices)
 
 	// The maximum balance churn in Gwei (for deposits and exits separately)
-	max_balance_churn := Max(
-		MAX_DEPOSIT_AMOUNT,
-		total_balance/(2*MAX_BALANCE_CHURN_QUOTIENT))
+	max_balance_churn := Max(MAX_DEPOSIT_AMOUNT, total_balance/(2*MAX_BALANCE_CHURN_QUOTIENT))
 
 	// Activate validators within the allowable balance churn
 	{
@@ -1042,10 +995,7 @@ func generate_seed(state *BeaconState, epoch Epoch) Bytes32 {
 
 // Return the number of committees in one epoch.
 func get_epoch_committee_count(active_validator_count uint64) uint64 {
-	return MaxU64(1, MinU64(
-		uint64(SHARD_COUNT)/uint64(SLOTS_PER_EPOCH),
-		active_validator_count/uint64(SLOTS_PER_EPOCH)/TARGET_COMMITTEE_SIZE,
-	)) * uint64(SLOTS_PER_EPOCH)
+	return MaxU64(1, MinU64(uint64(SHARD_COUNT)/uint64(SLOTS_PER_EPOCH), active_validator_count/uint64(SLOTS_PER_EPOCH)/TARGET_COMMITTEE_SIZE)) * uint64(SLOTS_PER_EPOCH)
 }
 
 type CrosslinkCommittee struct {
@@ -1058,9 +1008,7 @@ type CrosslinkCommittee struct {
 // Note: There are two possible shufflings for crosslink committees for a
 //  slot in the next epoch -- with and without a registryChange
 func get_crosslink_committees_at_slot(state *BeaconState, slot Slot, registryChange bool) ([]CrosslinkCommittee, error) {
-	epoch := slot.ToEpoch()
-	current_epoch := state.Epoch()
-	previous_epoch := state.PreviousEpoch()
+	epoch, current_epoch, previous_epoch := slot.ToEpoch(), state.Epoch(), state.PreviousEpoch()
 	next_epoch := current_epoch + 1
 
 	if !(previous_epoch <= epoch && epoch <= next_epoch) {
@@ -1098,11 +1046,7 @@ func get_crosslink_committees_at_slot(state *BeaconState, slot Slot, registryCha
 			shuffling_start_shard = state.current_shuffling_start_shard
 		}
 	}
-	shuffling := get_shuffling(
-		seed,
-		state.validator_registry,
-		shuffling_epoch,
-	)
+	shuffling := get_shuffling(seed, state.validator_registry, shuffling_epoch)
 	offset := slot % SLOTS_PER_EPOCH
 	committees_per_slot := committees_per_epoch / uint64(SLOTS_PER_EPOCH)
 	slot_start_shard := (shuffling_start_shard + Shard(committees_per_slot)*Shard(offset)) % SHARD_COUNT
@@ -1142,15 +1086,12 @@ func get_block_root(state *BeaconState, slot Slot) (Root, error) {
 // Verify validity of slashable_attestation fields.
 func verify_slashable_attestation(state *BeaconState, slashable_attestation *SlashableAttestation) bool {
 	// TODO Moved condition to top, compared to spec. Data can be way too big, get rid of that ASAP.
-	if len(slashable_attestation.validator_indices) > MAX_INDICES_PER_SLASHABLE_VOTE {
-		return false
-	}
-
-	if !slashable_attestation.custody_bitfield.IsZero() { // [TO BE REMOVED IN PHASE 1]
-		return false
-	}
-
-	if len(slashable_attestation.validator_indices) == 0 {
+	if len(slashable_attestation.validator_indices) == 0 ||
+		len(slashable_attestation.validator_indices) > MAX_INDICES_PER_SLASHABLE_VOTE ||
+	// [TO BE REMOVED IN PHASE 1]
+		!slashable_attestation.custody_bitfield.IsZero() ||
+	// verify the size of the bitfield: it must have exactly enough bits for the given amount of validators.
+		!slashable_attestation.custody_bitfield.verifySize(uint64(len(slashable_attestation.validator_indices))) {
 		return false
 	}
 
@@ -1161,13 +1102,7 @@ func verify_slashable_attestation(state *BeaconState, slashable_attestation *Sla
 		}
 	}
 
-	// verify the size of the bitfield: it must have exactly enough bits for the given amount of validators.
-	if !slashable_attestation.custody_bitfield.verifySize(uint64(len(slashable_attestation.validator_indices))) {
-		return false
-	}
-
-	custody_bit_0_pubkeys := make([]BLSPubkey, 0)
-	custody_bit_1_pubkeys := make([]BLSPubkey, 0)
+	custody_bit_0_pubkeys, custody_bit_1_pubkeys := make([]BLSPubkey, 0), make([]BLSPubkey, 0)
 	for i, validator_index := range slashable_attestation.validator_indices {
 		// The slashable indices is one giant sorted list of numbers,
 		//   bigger than the registry, causing a out-of-bounds panic for some of the indices.
@@ -1183,14 +1118,9 @@ func verify_slashable_attestation(state *BeaconState, slashable_attestation *Sla
 	}
 	// don't trust, verify
 	return bls_verify_multiple(
-		[]BLSPubkey{
-			bls_aggregate_pubkeys(custody_bit_0_pubkeys),
-			bls_aggregate_pubkeys(custody_bit_1_pubkeys),
-		},
-		[]Root{
-			hash_tree_root(AttestationDataAndCustodyBit{data: slashable_attestation.data, custody_bit: false}),
-			hash_tree_root(AttestationDataAndCustodyBit{data: slashable_attestation.data, custody_bit: true}),
-		},
+		[]BLSPubkey{bls_aggregate_pubkeys(custody_bit_0_pubkeys), bls_aggregate_pubkeys(custody_bit_1_pubkeys)},
+		[]Root{hash_tree_root(AttestationDataAndCustodyBit{data: slashable_attestation.data, custody_bit: false}),
+			hash_tree_root(AttestationDataAndCustodyBit{data: slashable_attestation.data, custody_bit: true})},
 		slashable_attestation.aggregate_signature,
 		get_domain(state.fork, slashable_attestation.data.slot.ToEpoch(), DOMAIN_ATTESTATION),
 	)

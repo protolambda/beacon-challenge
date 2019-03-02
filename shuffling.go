@@ -49,7 +49,7 @@ func shuffleValidatorIndices(input []ValidatorIndex, seed Bytes32) {
 		binary.LittleEndian.PutUint32(buf[hPivotViewSize:], uint32(pivot>>8))
 		source := hash(buf)
 		byteV := source[(pivot&0xff)>>3]
-		for i, j := uint64(0), pivot; i < mirror; i, j = i+1, j-1 {
+		handle := func(i uint64, j uint64) {
 			// The pair is i,j. With j being the bigger of the two, hence the "position" identifier of the pair.
 			// Every 256th bit (aligned to j).
 			if j&0xff == 0xff {
@@ -61,12 +61,14 @@ func shuffleValidatorIndices(input []ValidatorIndex, seed Bytes32) {
 			if j&0x7 == 0x7 {
 				byteV = source[(j&0xff)>>3]
 			}
-			bitV := (byteV >> (j & 0x7)) & 0x1
 
-			if bitV == 1 {
+			if (byteV>>(j&0x7))&0x1 == 1 {
 				// swap the pair items
 				input[i], input[j] = input[j], input[i]
 			}
+		}
+		for i, j := uint64(0), pivot; i < mirror; i, j = i+1, j-1 {
+			handle(i, j)
 		}
 		// Now repeat, but for the part after the pivot.
 		mirror = (pivot + listSize + 1) >> 1
@@ -78,26 +80,8 @@ func shuffleValidatorIndices(input []ValidatorIndex, seed Bytes32) {
 		source = hash(buf)
 		byteV = source[(end&0xff)>>3]
 		for i, j := pivot+1, end; i < mirror; i, j = i+1, j-1 {
-			// Exact same thing (copy of above loop body)
-			//--------------------------------------------
-			// The pair is i,j. With j being the bigger of the two, hence the "position" identifier of the pair.
-			// Every 256th bit (aligned to j).
-			if j&0xff == 0xff {
-				// just overwrite the last part of the buffer, reuse the start (seed, round)
-				binary.LittleEndian.PutUint32(buf[hPivotViewSize:], uint32(j>>8))
-				source = hash(buf)
-			}
-			// Same trick with byte retrieval. Only every 8th.
-			if j&0x7 == 0x7 {
-				byteV = source[(j&0xff)>>3]
-			}
-			bitV := (byteV >> (j & 0x7)) & 0x1
-
-			if bitV == 1 {
-				// swap the pair items
-				input[i], input[j] = input[j], input[i]
-			}
-			//--------------------------------------------
+			// Exact same thing
+			handle(i, j)
 		}
 	}
 }
