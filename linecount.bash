@@ -8,7 +8,7 @@ gofiles=($gofilesStr)
 IFS=$'\n' gofiles=($(sort <<<"${gofiles[*]}"))
 unset IFS
 
-printf "file                        brackets         comments        blanks        not-counting        counting         full\n"
+printf '%-40s%-15s%-15s%-15s%-15s%-15s%-15s\n' "file" "brackets" "comments" "blanks" "not-counting" "counting" "full"
 
 TOTAL_COUNT=0
 for i in "${gofiles[@]}"
@@ -23,7 +23,7 @@ do
     NOT_COUNTING=$(($BRACKETS + $COMMENTS + $BLANKS))
     COUNTING=$(($FULL - $NOT_COUNTING))
     TOTAL_COUNT=$(($TOTAL_COUNT + $COUNTING))
-    printf "$i\t                    $BRACKETS\t         $COMMENTS\t         $BLANKS\t         $NOT_COUNTING\t         $COUNTING\t         $FULL\n"
+    printf '%-40s%-15s%-15s%-15s%-15s%-15s%-15s\n' "$i" "$BRACKETS" "$COMMENTS" "$BLANKS" "$NOT_COUNTING" "$COUNTING" "$FULL"
 done
 
 echo "total counting lines: $TOTAL_COUNT"
