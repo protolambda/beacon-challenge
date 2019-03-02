@@ -71,9 +71,10 @@ func sszSerialize(v reflect.Value, dst *[]byte) (encodedLen uint32) {
 		s, _ := withSize(dst, 1)
 		(*dst)[s] = byte(v.Uint())
 		return 1
-	case reflect.Uint32: // "uintN"
-		s, e := withSize(dst, 4)
-		binary.LittleEndian.PutUint32((*dst)[s:e], uint32(v.Uint()))
+	// Commented, not really used in spec.
+	//case reflect.Uint32: // "uintN"
+	//	s, e := withSize(dst, 4)
+	//	binary.LittleEndian.PutUint32((*dst)[s:e], uint32(v.Uint()))
 		return 4
 	case reflect.Uint64: // "uintN"
 		s, e := withSize(dst, 8)
