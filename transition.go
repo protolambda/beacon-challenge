@@ -231,7 +231,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			}
 
 			// phase 0 only:
-			if attestation.data.crosslink_data_root != ZERO_HASH {
+			if attestation.data.crosslink_data_root != (Root{}) {
 				return errors.New(fmt.Sprintf("attestation %d has invalid crosslink: root must be 0 in phase 0", i))
 			}
 		}
@@ -1141,7 +1141,7 @@ func get_shuffling(seed Bytes32, validators []Validator, epoch Epoch) [][]Valida
 // Return the block root at a recent slot.
 func get_block_root(state *BeaconState, slot Slot) (Root, error) {
 	if !(state.slot <= slot+LATEST_BLOCK_ROOTS_LENGTH && slot < state.slot) {
-		return ZERO_HASH, errors.New("slot is not a recent slot, cannot find block root")
+		return Root{}, errors.New("slot is not a recent slot, cannot find block root")
 	}
 	return state.latest_block_roots[slot%LATEST_BLOCK_ROOTS_LENGTH], nil
 }
@@ -1247,11 +1247,11 @@ func get_randao_mix(state *BeaconState, epoch Epoch) Bytes32 {
 }
 
 // Get the domain number that represents the fork meta and signature domain.
-func get_domain(fork Fork, epoch Epoch, dom BlsDomain) BlsDomain {
+func get_domain(fork Fork, epoch Epoch, dom BLSDomain) BLSDomain {
 	// combine fork version with domain.
 	// TODO: spec is unclear about input size expectations.
 	// TODO And is "+" different than packing into 64 bits here? I.e. ((32 bits fork version << 32) | (dom 32 bits))
-	return BlsDomain(fork.GetVersion(epoch)<<32) + dom
+	return BLSDomain(fork.GetVersion(epoch)<<32) + dom
 }
 
 // Return the beacon proposer index for the slot.
