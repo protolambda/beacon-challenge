@@ -17,7 +17,7 @@ func StateTransition(preState *BeaconState, block *BeaconBlock) (res *BeaconStat
 	// We work on a copy of the input state. If the block is invalid, or input is re-used, we don't have to care.
 	state := preState.Copy()
 	// happens at the start of every slot
-	for i := state.slot; i <= block.slot; i++ {
+	for i := state.slot; i < block.slot; i++ {
 		// Verified earlier, before calling StateTransition:
 		// > The parent block with root `block.parent_root` has been processed and accepted
 		// Hence, we can update latest block roots with the parent block root
