@@ -30,6 +30,8 @@ func StateTransition(preState *BeaconState, block *BeaconBlock) (res *BeaconStat
 	if block.state_root != hash_tree_root(state) {
 		return nil, errors.New("block has invalid state root")
 	}
+	// For the next time we use this state. (used in per-slot processing)
+	state.latest_block_roots[state.slot%LATEST_BLOCK_ROOTS_LENGTH] = hash_tree_root(block)
 	return state, nil
 }
 
@@ -331,8 +333,8 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 func SlotTransition(state *BeaconState) {
 	state.slot += 1
 
-	// Let previous_block_root be the hash_tree_root of the previous beacon block processed in the chain.
-	state.latest_block_roots[(state.slot-1)%LATEST_BLOCK_ROOTS_LENGTH] = state.latest_block_roots[(state.slot-2)%LATEST_BLOCK_ROOTS_LENGTH]
+	// Copy over last block from state
+	state.latest_block_roots[(state.slot)%LATEST_BLOCK_ROOTS_LENGTH] = state.latest_block_roots[(state.slot-1)%LATEST_BLOCK_ROOTS_LENGTH]
 	if state.slot%LATEST_BLOCK_ROOTS_LENGTH == 0 {
 		// yes, this is ugly, typing requires us to be explict when we want to merkleize a list of non-bytes32 items.
 		merkle_input := make([]Bytes32, len(state.latest_block_roots))
