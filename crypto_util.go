@@ -8,7 +8,7 @@ func merkle_root(values []Bytes32) Root {
 	o := make([]Bytes32, len(values)*2)
 	copy(o[len(values):], values)
 	for i := len(values) - 1; i >= 0; i-- {
-		o[i] = hash(append(o[i*2][:], o[i*2+1][:]...)
+		o[i] = hash(append(o[i*2][:], o[i*2+1][:]...))
 	}
 	return Root(o[1])
 }
@@ -32,7 +32,7 @@ func xorBytes32(a Bytes32, b Bytes32) (out Bytes32) {
 // Verify that the given leaf is on the merkle branch.
 func verify_merkle_branch(leaf Bytes32, branch []Root, depth uint64, index uint64, root Root) bool {
 	value := leaf
-	for i := 0; i < depth; i++ {
+	for i := uint64(0); i < depth; i++ {
 		if (index>>i)&1 == 1 {
 			value = hash(append(branch[i][:], value[:]...))
 		} else {
