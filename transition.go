@@ -836,16 +836,6 @@ func EpochTransition(state *BeaconState) {
 	}
 }
 
-// Activate the validator of the given index.
-func activate_validator(state *BeaconState, index ValidatorIndex, is_genesis bool) {
-	validator := state.validator_registry[index]
-	if is_genesis {
-		validator.activation_epoch = GENESIS_EPOCH
-	} else {
-		validator.activation_epoch = get_delayed_activation_exit_epoch(state.Epoch())
-	}
-}
-
 // Set the validator with the given index as withdrawable
 // MIN_VALIDATOR_WITHDRAWABILITY_DELAY after the current epoch.
 func prepare_validator_for_withdrawal(state *BeaconState, index ValidatorIndex) {
@@ -986,7 +976,7 @@ func update_validator_registry(state *BeaconState) {
 					break
 				}
 				//  Activate validator
-				activate_validator(state, ValidatorIndex(index), false)
+				validator.activation_epoch = get_delayed_activation_exit_epoch(state.Epoch())
 			}
 		}
 	}
