@@ -35,17 +35,12 @@ func xorBytes32(a Bytes32, b Bytes32) (out Bytes32) {
 // Verify that the given leaf is on the merkle branch.
 func verify_merkle_branch(leaf Bytes32, branch []Root, depth uint64, index uint64, root Root) bool {
 	value := leaf
-	buf := make([]byte, 64, 64)
-	for i := uint64(0); i < depth; i++ {
+	for i := 0; i < depth; i++ {
 		if (index>>i)&1 == 1 {
-			copy(buf[:32], branch[i][:])
-			copy(buf[32:], value[:])
+			value = hash(append(branch[i][:], value[:]...))
 		} else {
-			// reverse order in buffer, compared to above
-			copy(buf[32:], branch[i][:])
-			copy(buf[:32], value[:])
+			value = hash(append(value[:], branch[i][:]...))
 		}
-		value = hash(buf)
 	}
 	return Root(value) == root
 }
