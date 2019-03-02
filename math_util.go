@@ -10,17 +10,15 @@ func Min(a Gwei, b Gwei) Gwei {
 func MaxU64(a uint64, b uint64) uint64 {
 	if a > b {
 		return a
-	} else {
-		return b
 	}
+	return b
 }
 
 func MinU64(a uint64, b uint64) uint64 {
 	if a < b {
 		return a
-	} else {
-		return b
 	}
+	return b
 }
 
 // The largest integer x such that x**2 is less than or equal to n.
