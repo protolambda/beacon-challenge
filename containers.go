@@ -170,7 +170,7 @@ type BeaconState struct {
 	validator_registry_update_epoch Epoch
 
 	// Randomness and committees
-	latest_randao_mixes            []Bytes32
+	latest_randao_mixes            [LATEST_RANDAO_MIXES_LENGTH]Bytes32
 	previous_shuffling_start_shard Shard
 	current_shuffling_start_shard  Shard
 	previous_shuffling_epoch       Epoch
@@ -185,10 +185,11 @@ type BeaconState struct {
 	finalized_epoch          Epoch
 
 	// Recent state
-	latest_crosslinks         []Crosslink
-	latest_block_roots        []Root
-	latest_active_index_roots []Root
-	latest_slashed_balances   []Gwei // Balances slashed at every withdrawal period
+	latest_crosslinks         [SHARD_COUNT]Crosslink
+	latest_block_roots        [LATEST_BLOCK_ROOTS_LENGTH]Root
+	latest_active_index_roots [LATEST_ACTIVE_INDEX_ROOTS_LENGTH]Root
+	// Balances slashed at every withdrawal period
+	latest_slashed_balances   [LATEST_SLASHED_EXIT_LENGTH]Gwei
 	latest_attestations       []PendingAttestation
 	batched_block_roots       []Root
 
@@ -207,13 +208,7 @@ func (st *BeaconState) Copy() *BeaconState {
 	// validators
 	copy(res.validator_registry, st.validator_registry)
 	copy(res.validator_balances, st.validator_balances)
-	// randao
-	copy(res.latest_randao_mixes, st.latest_randao_mixes)
 	// recent state
-	copy(res.latest_crosslinks, st.latest_crosslinks)
-	copy(res.latest_block_roots, st.latest_block_roots)
-	copy(res.latest_active_index_roots, st.latest_active_index_roots)
-	copy(res.latest_slashed_balances, st.latest_slashed_balances)
 	copy(res.latest_attestations, st.latest_attestations)
 	copy(res.batched_block_roots, st.batched_block_roots)
 	// eth1
