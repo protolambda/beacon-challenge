@@ -294,8 +294,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 			withdrawCred[31] = BLS_WITHDRAWAL_PREFIX_BYTE
 			copy(withdrawCred[1:], hash(transfer.pubkey[:])[1:])
 			// verify transfer data + signature. No separate error messages for line limit challenge...
-			if !(state.validator_balances[transfer.from] >= transfer.amount &&
-				state.validator_balances[transfer.from] >= transfer.fee &&
+			if !(state.validator_balances[transfer.from] >= transfer.amount && state.validator_balances[transfer.from] >= transfer.fee &&
 				((state.validator_balances[transfer.from] == transfer.amount+transfer.fee) ||
 					(state.validator_balances[transfer.from] >= transfer.amount+transfer.fee+MIN_DEPOSIT_AMOUNT)) &&
 				state.slot == transfer.slot &&
