@@ -55,7 +55,7 @@ The original intention was to create a transition that is:
 Some of these intentions had to be ignored to make the line-limit work at the end,
  hence we are thinking about starting over, without prioritizing code-golfing. 
 
-However, the line was also good for some things:
+However, the line limit was also good for some things:
 
 - Found several parts in the spec with small inconsistencies / poor wording
 - Submitted a PR to fix some things, more to come.
