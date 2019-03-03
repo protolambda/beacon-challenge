@@ -901,11 +901,8 @@ func process_deposit(state *BeaconState, dep *Deposit) error {
 
 // Update validator registry.
 func update_validator_registry(state *BeaconState) {
-	current_epoch := state.Epoch()
-	// The active validators
-	active_validator_indices := get_active_validator_indices(state.validator_registry, current_epoch)
 	// The total effective balance of active validators
-	total_balance := get_total_balance(state, active_validator_indices)
+	total_balance := get_total_balance(state, get_active_validator_indices(state.validator_registry, state.Epoch()))
 
 	// The maximum balance churn in Gwei (for deposits and exits separately)
 	max_balance_churn := Max(MAX_DEPOSIT_AMOUNT, total_balance/(2*MAX_BALANCE_CHURN_QUOTIENT))
@@ -1142,9 +1139,8 @@ func slash_validator(state *BeaconState, index ValidatorIndex) error {
 	exit_validator(state, index)
 	state.latest_slashed_balances[state.Epoch()%LATEST_SLASHED_EXIT_LENGTH] += get_effective_balance(state, index)
 
-	whistleblower_index := get_beacon_proposer_index(state, state.slot)
 	whistleblower_reward := get_effective_balance(state, index) / WHISTLEBLOWER_REWARD_QUOTIENT
-	state.validator_balances[whistleblower_index] += whistleblower_reward
+	state.validator_balances[get_beacon_proposer_index(state, state.slot)] += whistleblower_reward
 	state.validator_balances[index] -= whistleblower_reward
 	validator.slashed = true
 	validator.withdrawable_epoch = state.Epoch() + LATEST_SLASHED_EXIT_LENGTH
