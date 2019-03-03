@@ -87,20 +87,18 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 		if len(block.body.proposer_slashings) > MAX_PROPOSER_SLASHINGS {
 			return errors.New("too many proposer slashings")
 		}
-		for i, proposer_slashing := range block.body.proposer_slashings {
-			if !is_validator_index(state, proposer_slashing.proposer_index) {
+		for i, ps := range block.body.proposer_slashings {
+			if !is_validator_index(state, ps.proposer_index) {
 				return errors.New("invalid proposer index")
 			}
-			proposer := state.validator_registry[proposer_slashing.proposer_index]
-			if !(proposer_slashing.proposal_1.slot == proposer_slashing.proposal_2.slot &&
-				proposer_slashing.proposal_1.shard == proposer_slashing.proposal_2.shard &&
-				proposer_slashing.proposal_1.block_root != proposer_slashing.proposal_2.block_root &&
-				proposer.slashed == false &&
-				bls_verify(proposer.pubkey, signed_root(proposer_slashing.proposal_1, "signature"), proposer_slashing.proposal_1.signature, get_domain(state.fork, proposer_slashing.proposal_1.slot.ToEpoch(), DOMAIN_PROPOSAL)) &&
-				bls_verify(proposer.pubkey, signed_root(proposer_slashing.proposal_2, "signature"), proposer_slashing.proposal_2.signature, get_domain(state.fork, proposer_slashing.proposal_2.slot.ToEpoch(), DOMAIN_PROPOSAL))) {
+			proposer := state.validator_registry[ps.proposer_index]
+			if !(ps.proposal_1.slot == ps.proposal_2.slot && ps.proposal_1.shard == ps.proposal_2.shard &&
+				ps.proposal_1.block_root != ps.proposal_2.block_root && proposer.slashed == false &&
+				bls_verify(proposer.pubkey, signed_root(ps.proposal_1, "signature"), ps.proposal_1.signature, get_domain(state.fork, ps.proposal_1.slot.ToEpoch(), DOMAIN_PROPOSAL)) &&
+				bls_verify(proposer.pubkey, signed_root(ps.proposal_2, "signature"), ps.proposal_2.signature, get_domain(state.fork, ps.proposal_2.slot.ToEpoch(), DOMAIN_PROPOSAL))) {
 				return errors.New(fmt.Sprintf("proposer slashing %d is invalid", i))
 			}
-			if err := slash_validator(state, proposer_slashing.proposer_index); err != nil {
+			if err := slash_validator(state, ps.proposer_index); err != nil {
 				return err
 			}
 		}
@@ -114,8 +112,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 		for i, attester_slashing := range block.body.attester_slashings {
 			sa1, sa2 := &attester_slashing.slashable_attestation_1, &attester_slashing.slashable_attestation_2
 			// verify the attester_slashing
-			if !(sa1.data != sa2.data &&
-				(is_double_vote(&sa1.data, &sa2.data) || is_surround_vote(&sa1.data, &sa2.data)) &&
+			if !(sa1.data != sa2.data && (is_double_vote(&sa1.data, &sa2.data) || is_surround_vote(&sa1.data, &sa2.data)) &&
 				verify_slashable_attestation(state, sa1) && verify_slashable_attestation(state, sa2)) {
 				return errors.New(fmt.Sprintf("attester slashing %d is invalid", i))
 			}
@@ -155,10 +152,8 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 				justified_epoch = state.justified_epoch
 			}
 			blockRoot, blockRootErr := get_block_root(state, attestation.data.justified_epoch.GetStartSlot())
-			if !(attestation.data.slot >= GENESIS_SLOT &&
-				attestation.data.slot+MIN_ATTESTATION_INCLUSION_DELAY <= state.slot &&
-				state.slot < attestation.data.slot+SLOTS_PER_EPOCH &&
-				attestation.data.justified_epoch == justified_epoch &&
+			if !(attestation.data.slot >= GENESIS_SLOT && attestation.data.slot+MIN_ATTESTATION_INCLUSION_DELAY <= state.slot &&
+				state.slot < attestation.data.slot+SLOTS_PER_EPOCH && attestation.data.justified_epoch == justified_epoch &&
 				(blockRootErr == nil && attestation.data.justified_block_root == blockRoot) &&
 				(state.latest_crosslinks[attestation.data.shard] == attestation.data.latest_crosslink ||
 					state.latest_crosslinks[attestation.data.shard] == Crosslink{crosslink_data_root: attestation.data.crosslink_data_root, epoch: attestation.data.slot.ToEpoch()})) {

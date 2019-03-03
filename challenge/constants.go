@@ -13,11 +13,10 @@ const SHUFFLE_ROUND_COUNT = 90
 const DEPOSIT_CONTRACT_TREE_DEPTH = 1 << 5 // =  32
 
 // Gwei values
-const MILLION_GWEI Gwei = 1000000000
-const MIN_DEPOSIT_AMOUNT Gwei = (1 << 0) * MILLION_GWEI // =  1,000,000,000  Gwei
-const MAX_DEPOSIT_AMOUNT Gwei = (1 << 5) * MILLION_GWEI // =  32,000,000,000  Gwei
+const MIN_DEPOSIT_AMOUNT Gwei = (1 << 0) * 1000000000 // =  1,000,000,000  Gwei
+const MAX_DEPOSIT_AMOUNT Gwei = (1 << 5) * 1000000000 // =  32,000,000,000  Gwei
 // unused const FORK_CHOICE_BALANCE_INCREMENT Gwei = (1 << 0) * MILLION_GWEI // =  1,000,000,000  Gwei
-const EJECTION_BALANCE Gwei = (1 << 4) * MILLION_GWEI // =  16,000,000,000  Gwei
+const EJECTION_BALANCE Gwei = (1 << 4) * 1000000000 // =  16,000,000,000  Gwei
 
 // Initial values
 // unused const GENESIS_FORK_VERSION uint64 = 0
@@ -60,14 +59,7 @@ const MAX_VOLUNTARY_EXITS = 1 << 4    // =  16
 const MAX_TRANSFERS = 1 << 4          // =  16
 
 // Signature domains
-const DOMAIN_DEPOSIT BLSDomain = 0
-const DOMAIN_ATTESTATION BLSDomain = 1
-const DOMAIN_PROPOSAL BLSDomain = 2
-const DOMAIN_EXIT BLSDomain = 3
-const DOMAIN_RANDAO BLSDomain = 4
-const DOMAIN_TRANSFER BLSDomain = 5
+const DOMAIN_DEPOSIT, DOMAIN_ATTESTATION, DOMAIN_PROPOSAL, DOMAIN_EXIT, DOMAIN_RANDAO, DOMAIN_TRANSFER BLSDomain = 0, 1, 2, 3, 4, 5
 
-// Custom constants for internal usage, no need to standardize
-
-// An impossible validator index used to mark special internal cases. (all 1s binary)
+// Custom constant, not in spec: An impossible validator index used to mark special internal cases. (all 1s binary)
 const ValidatorIndexMarker = ValidatorIndex(^uint64(0))

@@ -1,1 +1,1 @@
-module protolambda.com/beacon-challenge
+module protolambda.com/beacon-challenge/
