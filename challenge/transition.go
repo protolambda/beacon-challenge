@@ -290,9 +290,9 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 		}
 
 		for i, transfer := range block.body.transfers {
-			withdrawCred := Root{}
-			withdrawCred[31] = BLS_WITHDRAWAL_PREFIX_BYTE
-			copy(withdrawCred[1:], hash(transfer.pubkey[:])[1:])
+			withdrawCred := Root(hash(transfer.pubkey[:]))
+			// overwrite first byte, remainder (the [1:] part, is still the hash)
+			withdrawCred[0] = BLS_WITHDRAWAL_PREFIX_BYTE
 			// verify transfer data + signature. No separate error messages for line limit challenge...
 			if !(state.validator_balances[transfer.from] >= transfer.amount && state.validator_balances[transfer.from] >= transfer.fee &&
 				((state.validator_balances[transfer.from] == transfer.amount+transfer.fee) ||
@@ -966,7 +966,8 @@ func get_attestation_participants(state *BeaconState, attestation_data *Attestat
 // Generate a seed for the given epoch
 func generate_seed(state *BeaconState, epoch Epoch) Bytes32 {
 	buf := make([]byte, 32*3)
-	copy(buf[0:32], get_randao_mix(state, epoch-MIN_SEED_LOOKAHEAD)[:])
+	mix := get_randao_mix(state, epoch-MIN_SEED_LOOKAHEAD)
+	copy(buf[0:32], mix[:])
 	// get_active_index_root in spec, but only used once, and the assertion is unnecessary, since epoch input is always trusted
 	copy(buf[32:32*2], state.latest_active_index_roots[epoch%LATEST_ACTIVE_INDEX_ROOTS_LENGTH][:])
 	binary.LittleEndian.PutUint64(buf[32*3-8:], uint64(epoch))

@@ -20,7 +20,7 @@ type ValueFunction func(index ValidatorIndex) Gwei
 type ValidatorIndexSet []ValidatorIndex
 
 // returns a copy without the given indices
-func (vs *ValidatorIndexSet) Minus(removed ValidatorIndexSet) ValidatorIndexSet {
+func (vs ValidatorIndexSet) Minus(removed ValidatorIndexSet) ValidatorIndexSet {
 	res := vs.Copy()
 	res.RemoveAll(removed)
 	return res

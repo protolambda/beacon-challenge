@@ -23,7 +23,8 @@ func shuffleValidatorIndices(input []ValidatorIndex, seed Bytes32) {
 		buf[hSeedSize] = r
 		// Seed is already in place, now just hash the correct part of the buffer, and take a uint64 from it,
 		//  and modulo it to get a pivot within range.
-		pivot := binary.LittleEndian.Uint64(hash(buf[:hPivotViewSize])[:8]) % listSize
+		h := hash(buf[:hPivotViewSize])
+		pivot := binary.LittleEndian.Uint64(h[:8]) % listSize
 
 		// Split up the for-loop in two:
 		//  1. Handle the part from 0 (incl) to pivot (incl). This is mirrored around (pivot / 2)
