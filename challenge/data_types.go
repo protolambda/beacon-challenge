@@ -69,9 +69,8 @@ type Bitfield []byte
 func (b Bitfield) GetBit(i uint64) byte {
 	if uint64(len(b)<<3) > i {
 		return (b[i>>3] >> (i & 7)) & 1
-	} else {
-		panic("invalid bitfield access")
 	}
+	panic("invalid bitfield access")
 }
 
 // Verify bitfield against the size:

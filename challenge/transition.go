@@ -44,9 +44,9 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 		return errors.New("cannot apply block to pre-block-state at different slot")
 	}
 
+	proposer := state.validator_registry[get_beacon_proposer_index(state, state.slot)]
 	// Block signature
 	{
-		proposer := state.validator_registry[get_beacon_proposer_index(state, state.slot)]
 		proposal := Proposal{slot: block.slot, shard: BEACON_CHAIN_SHARD_NUMBER, block_root: signed_root(block, "signature"), signature: block.signature}
 		if !bls_verify(proposer.pubkey, signed_root(proposal, "signature"), proposal.signature, get_domain(state.fork, state.Epoch(), DOMAIN_PROPOSAL)) {
 			return errors.New("block signature invalid")
@@ -55,7 +55,6 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 
 	// RANDAO
 	{
-		proposer := state.validator_registry[get_beacon_proposer_index(state, state.slot)]
 		if !bls_verify(proposer.pubkey, hash_tree_root(state.Epoch()), block.randao_reveal, get_domain(state.fork, state.Epoch(), DOMAIN_RANDAO)) {
 			return errors.New("randao invalid")
 		}
@@ -207,10 +206,7 @@ func ApplyBlock(state *BeaconState, block *BeaconBlock) error {
 				custody_bit_1_pubkeys[i] = state.validator_registry[v].pubkey
 			}
 			// aggregate each of the two lists
-			pubKeys := []BLSPubkey{
-				bls_aggregate_pubkeys(custody_bit_0_pubkeys),
-				bls_aggregate_pubkeys(custody_bit_1_pubkeys),
-			}
+			pubKeys := []BLSPubkey{bls_aggregate_pubkeys(custody_bit_0_pubkeys), bls_aggregate_pubkeys(custody_bit_1_pubkeys)}
 			// hash the attestation data with 0 and 1 as bit
 			hashes := []Root{
 				hash_tree_root(AttestationDataAndCustodyBit{attestation.data, false}),
@@ -379,9 +375,7 @@ func EpochTransition(state *BeaconState) {
 	for vIndex := range previous_epoch_earliest_attestations {
 		previous_epoch_attester_indices = append(previous_epoch_attester_indices, vIndex)
 	}
-	previous_epoch_boundary_attester_indices := make(ValidatorIndexSet, 0)
-	previous_epoch_head_attester_indices := make(ValidatorIndexSet, 0)
-	current_epoch_boundary_attester_indices := make(ValidatorIndexSet, 0)
+	previous_epoch_boundary_attester_indices, previous_epoch_head_attester_indices, current_epoch_boundary_attester_indices := make(ValidatorIndexSet, 0), make(ValidatorIndexSet, 0), make(ValidatorIndexSet, 0)
 	for _, att := range state.latest_attestations {
 		if ep := att.data.slot.ToEpoch(); ep == previous_epoch {
 
@@ -722,8 +716,7 @@ func EpochTransition(state *BeaconState) {
 				{
 					committee_count := get_epoch_committee_count(get_active_validator_count(state.validator_registry, current_epoch))
 					for i := uint64(0); i < committee_count; i++ {
-						shard := (state.current_shuffling_start_shard + Shard(i)) % SHARD_COUNT
-						if state.latest_crosslinks[shard].epoch <= state.validator_registry_update_epoch {
+						if shard := (state.current_shuffling_start_shard + Shard(i)) % SHARD_COUNT; state.latest_crosslinks[shard].epoch <= state.validator_registry_update_epoch {
 							needsUpdate = false
 						}
 					}
@@ -769,8 +762,7 @@ func EpochTransition(state *BeaconState) {
 		{
 			eligible_indices := make(ValidatorIndexSet, 0)
 			for index, validator := range state.validator_registry {
-				if validator.withdrawable_epoch != FAR_FUTURE_EPOCH &&
-					current_epoch > validator.exit_epoch+MIN_VALIDATOR_WITHDRAWABILITY_DELAY {
+				if validator.withdrawable_epoch != FAR_FUTURE_EPOCH && current_epoch > validator.exit_epoch+MIN_VALIDATOR_WITHDRAWABILITY_DELAY {
 					eligible_indices = append(eligible_indices, ValidatorIndex(index))
 				}
 			}

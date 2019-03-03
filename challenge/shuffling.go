@@ -2,9 +2,7 @@ package challenge
 
 import "encoding/binary"
 
-const hSeedSize = int8(32)
-const hRoundSize = int8(1)
-const hPositionWindowSize = int8(4)
+const hSeedSize, hRoundSize, hPositionWindowSize = int8(32), int8(1), int8(4)
 const hPivotViewSize = hSeedSize + hRoundSize
 const hTotalSize = hSeedSize + hRoundSize + hPositionWindowSize
 
