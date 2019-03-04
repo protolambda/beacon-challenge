@@ -85,7 +85,8 @@ concatenate the files, and you get 1024 (reduce package name lines for 7/8 files
 ```
 
 
-Git ref of beacon spec used for this challenge: [8df7de150e68408b78d6488a6f4c9cf8e18c4405](https://github.com/ethereum/eth2.0-specs/blob/8df7de150e68408b78d6488a6f4c9cf8e18c4405/specs/core/0_beacon-chain.md) (Current dev branch at the time of starting the challenge).
+Git ref of beacon spec used for this challenge: [8df7de150e68408b78d6488a6f4c9cf8e18c4405](https://github.com/ethereum/eth2.0-specs/blob/8df7de150e68408b78d6488a6f4c9cf8e18c4405/specs/core/0_beacon-chain.md)
+ (dev branch around time of the challenge).
 
 ### Counting lines
 
