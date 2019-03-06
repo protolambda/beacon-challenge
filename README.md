@@ -1,3 +1,13 @@
+**DEPRECATED IN FAVOR OF NEW REPO**
+
+This was mostly just an experiment, and parts of this implementation are very bugged.
+The new repository continues this project, but structured, adhering to Go-lang style, testing, and lots of bug-fixes.
+
+**New repository here:** [protolambda/go-beacon-transition](https://github.com/protolambda/go-beacon-transition/)
+
+
+---------
+
 # Beacon-challenge
 
 **Code golfed** Beacon-state transition implementation by @protolambda.
